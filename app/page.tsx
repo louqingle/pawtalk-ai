@@ -1,6 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+
 import {
   AudioLines,
   Cat,
@@ -31,7 +37,9 @@ import {
 import Auth from "@/components/Auth";
 import { createClient } from "@/lib/supabase/client";
 import Avatar from "@/components/Avatar";
+
 type Animal = "猫咪" | "狗狗" | "鸟类" | "其他";
+
 type Tab = "sound" | "photo";
 
 type Result = {
@@ -72,16 +80,29 @@ const animals: {
 ];
 
 export default function Home() {
-  const supabase = createClient();
+  /*
+   * Supabase Client
+   *
+   * 使用 useMemo 保证整个页面生命周期
+   * 使用同一个 Supabase client。
+   */
+  const supabase = useMemo(
+    () => createClient(),
+    []
+  );
 
   const [session, setSession] =
     useState<any>(null);
+
   const [avatarUrl, setAvatarUrl] =
-  useState<string | null>(null);
+    useState<string | null>(null);
+
   const [authLoading, setAuthLoading] =
     useState(true);
+
   const [showAccount, setShowAccount] =
-  useState(false);
+    useState(false);
+
   const [animal, setAnimal] =
     useState<Animal>("猫咪");
 
@@ -148,94 +169,131 @@ export default function Home() {
     useRef<HTMLCanvasElement | null>(null);
 
   /*
+   * ============================
    * Supabase 登录状态
+   * ============================
    */
+
   useEffect(() => {
-  if (!session?.user) {
-    setAvatarUrl(null);
-    return;
-  }
-
-  setAvatarUrl(
-    session.user.user_metadata?.avatar_url || null
-  );
-}, [session]);
-
-useEffect(() => {
-  let mounted = true;
-
-  const loadSession = async () => {
-    try {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-
-      if (mounted) {
-        setSession(session);
-        setAuthLoading(false);
-      }
-    } catch (error) {
-      console.error("Supabase session check failed:", error);
-
-      if (mounted) {
-        setSession(null);
-        setAuthLoading(false);
-      }
+    if (!session?.user) {
+      setAvatarUrl(null);
+      return;
     }
-  };
 
-  loadSession();
+    setAvatarUrl(
+      session.user.user_metadata
+        ?.avatar_url || null
+    );
+  }, [session]);
 
-  const {
-    data: { subscription },
-  } = supabase.auth.onAuthStateChange(
-    (_event, session) => {
-      if (mounted) {
-        setSession(session);
-        setAuthLoading(false);
+  useEffect(() => {
+    let mounted = true;
+
+    const loadSession = async () => {
+      try {
+        const {
+          data: { session },
+          error,
+        } =
+          await supabase.auth.getSession();
+
+        if (error) {
+          console.error(
+            "Supabase getSession failed:",
+            error
+          );
+        }
+
+        if (mounted) {
+          setSession(session ?? null);
+          setAuthLoading(false);
+        }
+      } catch (error) {
+        console.error(
+          "Supabase session check failed:",
+          error
+        );
+
+        if (mounted) {
+          setSession(null);
+          setAuthLoading(false);
+        }
       }
-    }
-  );
+    };
 
-  return () => {
-    mounted = false;
-    subscription.unsubscribe();
-  };
-}, [supabase]);
+    loadSession();
+
+    const {
+      data: { subscription },
+    } =
+      supabase.auth.onAuthStateChange(
+        (_event, newSession) => {
+          if (!mounted) return;
+
+          setSession(
+            newSession ?? null
+          );
+
+          setAuthLoading(false);
+        }
+      );
+
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
+  }, [supabase]);
 
   /*
+   * ============================
    * 本地历史记录
-   *
-   * 注意：
-   * 这里只保存历史显示，
-   * 不再作为真正额度依据。
+   * ============================
    */
+
   useEffect(() => {
     if (!session) return;
 
     try {
+      const saved =
+        localStorage.getItem(
+          "pawtalk-history-v3"
+        );
+
       setHistory(
-        JSON.parse(
-          localStorage.getItem(
-            "pawtalk-history-v3"
-          ) || "[]"
-        )
+        saved ? JSON.parse(saved) : []
       );
-    } catch {}
+    } catch (error) {
+      console.warn(
+        "Failed to load history:",
+        error
+      );
+
+      setHistory([]);
+    }
   }, [session]);
 
   useEffect(() => {
     if (!session) return;
 
-    localStorage.setItem(
-      "pawtalk-history-v3",
-      JSON.stringify(history)
-    );
+    try {
+      localStorage.setItem(
+        "pawtalk-history-v3",
+        JSON.stringify(history)
+      );
+    } catch (error) {
+      console.warn(
+        "Failed to save history:",
+        error
+      );
+    }
   }, [history, session]);
 
   /*
+   * ============================
    * 页面卸载清理
+   * ============================
    */
+
   useEffect(() => {
     return () => {
       if (timer.current) {
@@ -251,51 +309,57 @@ useEffect(() => {
       if (audioContextRef.current) {
         audioContextRef.current.close();
       }
-    };
-  }, []);
 
-  /*
-   * 获取服务端额度
-   */
-  const loadCredits =
-    async () => {
-      try {
-        const response =
-          await fetch(
-            "/api/credits",
-            {
-              method: "GET",
-              cache: "no-store",
-            }
-          );
-
-        if (!response.ok) {
-          return;
-        }
-
-        const data =
-          await response.json();
-
-        if (
-          typeof data.used ===
-          "number"
-        ) {
-          setUses(data.used);
-        } else if (
-          typeof data.remaining ===
-          "number"
-        ) {
-          setUses(
-            Math.max(
-              0,
-              5 - data.remaining
-            )
-          );
-        }
-      } catch {
-        // 额度接口不存在时不阻塞页面
+      if (photo) {
+        URL.revokeObjectURL(photo);
       }
     };
+  }, [photo]);
+
+  /*
+   * ============================
+   * 获取服务端额度
+   * ============================
+   */
+
+  const loadCredits = async () => {
+    try {
+      const response =
+        await fetch("/api/credits", {
+          method: "GET",
+          cache: "no-store",
+        });
+
+      if (!response.ok) {
+        return;
+      }
+
+      const data =
+        await response.json();
+
+      if (
+        typeof data.used ===
+        "number"
+      ) {
+        setUses(data.used);
+      } else if (
+        typeof data.remaining ===
+        "number"
+      ) {
+        setUses(
+          Math.max(
+            0,
+            5 - data.remaining
+          )
+        );
+      }
+    } catch (error) {
+      console.warn(
+        "Failed to load credits:",
+        error
+      );
+    }
+  };
 
   useEffect(() => {
     if (session) {
@@ -304,8 +368,11 @@ useEffect(() => {
   }, [session]);
 
   /*
+   * ============================
    * 浏览器端音频特征提取
+   * ============================
    */
+
   const extractAudioFeatures =
     async (
       file: File
@@ -318,8 +385,9 @@ useEffect(() => {
 
         const AudioContextClass =
           window.AudioContext ||
-          (window as any)
-            .webkitAudioContext;
+          (
+            window as any
+          ).webkitAudioContext;
 
         if (!AudioContextClass) {
           return null;
@@ -334,9 +402,7 @@ useEffect(() => {
           );
 
         const channelData =
-          audioBuffer.getChannelData(
-            0
-          );
+          audioBuffer.getChannelData(0);
 
         const sampleRate =
           audioBuffer.sampleRate;
@@ -365,9 +431,7 @@ useEffect(() => {
 
           if (i > 0) {
             const previous =
-              channelData[
-                i - 1
-              ];
+              channelData[i - 1];
 
             if (
               (previous >= 0 &&
@@ -475,390 +539,367 @@ useEffect(() => {
     };
 
   /*
+   * ============================
    * 调用后端 AI
+   * ============================
    */
-  const analyzeFile =
-    async (
-      file: File,
-      source:
-        | "声音"
-        | "照片"
-    ) => {
-      if (!session) {
-        setError(
-          "请先登录后再进行分析。"
+
+  const analyzeFile = async (
+    file: File,
+    source: "声音" | "照片"
+  ) => {
+    if (!session) {
+      setError(
+        "请先登录后再进行分析。"
+      );
+      return;
+    }
+
+    if (uses >= 5) {
+      setShowPro(true);
+      return;
+    }
+
+    setError("");
+    setAnalyzing(true);
+    setResult(null);
+
+    try {
+      let audioFeatures:
+        | Record<string, number>
+        | null = null;
+
+      if (source === "声音") {
+        audioFeatures =
+          await extractAudioFeatures(
+            file
+          );
+      }
+
+      const fd =
+        new FormData();
+
+      fd.append(
+        "animal",
+        animal
+      );
+
+      fd.append(
+        "source",
+        source
+      );
+
+      fd.append(
+        "file",
+        file
+      );
+
+      if (audioFeatures) {
+        fd.append(
+          "audioFeatures",
+          JSON.stringify(
+            audioFeatures
+          )
         );
-        return;
       }
 
-      if (uses >= 5) {
-        setShowPro(true);
-        return;
-      }
+      const response =
+        await fetch(
+          "/api/analyze",
+          {
+            method: "POST",
+            body: fd,
+          }
+        );
 
-      setError("");
-      setAnalyzing(true);
-      setResult(null);
+      const data =
+        await response.json();
 
-      try {
-        let audioFeatures:
-          | Record<
-              string,
-              number
-            >
-          | null = null;
-
+      if (!response.ok) {
         if (
-          source === "声音"
+          response.status === 401
         ) {
-          audioFeatures =
-            await extractAudioFeatures(
-              file
-            );
-        }
-
-        const fd =
-          new FormData();
-
-        fd.append(
-          "animal",
-          animal
-        );
-
-        fd.append(
-          "source",
-          source
-        );
-
-        fd.append(
-          "file",
-          file
-        );
-
-        if (audioFeatures) {
-          fd.append(
-            "audioFeatures",
-            JSON.stringify(
-              audioFeatures
-            )
-          );
-        }
-
-        const response =
-          await fetch(
-            "/api/analyze",
-            {
-              method: "POST",
-              body: fd,
-            }
-          );
-
-        const data =
-          await response.json();
-
-        if (!response.ok) {
-          if (
-            response.status ===
-            401
-          ) {
-            setSession(null);
-
-            throw new Error(
-              "登录状态已失效，请重新登录。"
-            );
-          }
-
-          if (
-            response.status ===
-            402
-          ) {
-            setUses(5);
-            setShowPro(true);
-
-            throw new Error(
-              "免费次数已经用完。"
-            );
-          }
+          setSession(null);
 
           throw new Error(
-            data.error ||
-              "分析失败"
+            "登录状态已失效，请重新登录。"
           );
         }
 
-        const newResult: Result =
-          {
-            ...data,
-            id: crypto.randomUUID(),
-            createdAt:
-              new Date().toLocaleTimeString(
-                "zh-CN",
-                {
-                  hour: "2-digit",
-                  minute: "2-digit",
-                }
-              ),
-            source,
-          };
+        if (
+          response.status === 402
+        ) {
+          setUses(5);
+          setShowPro(true);
 
-        setResult(
-          newResult
-        );
+          throw new Error(
+            "免费次数已经用完。"
+          );
+        }
 
-        setHistory(
-          (items) =>
-            [
-              newResult,
-              ...items,
-            ].slice(0, 12)
+        throw new Error(
+          data.error ||
+            "分析失败"
         );
-
-        /*
-         * 不再通过 localStorage
-         * 扣次数。
-         *
-         * 服务端负责真实额度。
-         */
-        await loadCredits();
-      } catch (error: any) {
-        setError(
-          error?.message ||
-            "分析失败，请重试"
-        );
-      } finally {
-        setAnalyzing(false);
       }
-    };
+
+      const newResult: Result =
+        {
+          ...data,
+          id: crypto.randomUUID(),
+          createdAt:
+            new Date().toLocaleTimeString(
+              "zh-CN",
+              {
+                hour: "2-digit",
+                minute: "2-digit",
+              }
+            ),
+          source,
+        };
+
+      setResult(newResult);
+
+      setHistory((items) =>
+        [
+          newResult,
+          ...items,
+        ].slice(0, 12)
+      );
+
+      await loadCredits();
+    } catch (error: any) {
+      setError(
+        error?.message ||
+          "分析失败，请重试"
+      );
+    } finally {
+      setAnalyzing(false);
+    }
+  };
 
   /*
+   * ============================
    * 实时声音可视化
+   * ============================
    */
-  const startVisualizer =
-    (
-      stream: MediaStream
-    ) => {
-      try {
-        const AudioContextClass =
-          window.AudioContext ||
-          (window as any)
-            .webkitAudioContext;
 
-        if (!AudioContextClass) {
+  const startVisualizer = (
+    stream: MediaStream
+  ) => {
+    try {
+      const AudioContextClass =
+        window.AudioContext ||
+        (
+          window as any
+        ).webkitAudioContext;
+
+      if (!AudioContextClass) {
+        return;
+      }
+
+      const audioContext =
+        new AudioContextClass();
+
+      const analyser =
+        audioContext.createAnalyser();
+
+      analyser.fftSize = 256;
+      analyser.smoothingTimeConstant =
+        0.8;
+
+      const source =
+        audioContext.createMediaStreamSource(
+          stream
+        );
+
+      source.connect(analyser);
+
+      audioContextRef.current =
+        audioContext;
+
+      analyserRef.current =
+        analyser;
+
+      const data =
+        new Uint8Array(
+          analyser.fftSize
+        );
+
+      const draw = () => {
+        const canvas =
+          canvasRef.current;
+
+        const currentAnalyser =
+          analyserRef.current;
+
+        if (
+          !canvas ||
+          !currentAnalyser
+        ) {
           return;
         }
 
-        const audioContext =
-          new AudioContextClass();
-
-        const analyser =
-          audioContext.createAnalyser();
-
-        analyser.fftSize = 256;
-        analyser.smoothingTimeConstant =
-          0.8;
-
-        const source =
-          audioContext.createMediaStreamSource(
-            stream
-          );
-
-        source.connect(
-          analyser
-        );
-
-        audioContextRef.current =
-          audioContext;
-
-        analyserRef.current =
-          analyser;
-
-        const data =
-          new Uint8Array(
-            analyser.fftSize
-          );
-
-        const draw =
-          () => {
-            const canvas =
-              canvasRef.current;
-
-            const currentAnalyser =
-              analyserRef.current;
-
-            if (
-              !canvas ||
-              !currentAnalyser
-            ) {
-              return;
-            }
-
-            const ctx =
-              canvas.getContext(
-                "2d"
-              );
-
-            if (!ctx) {
-              return;
-            }
-
-            currentAnalyser.getByteTimeDomainData(
-              data
-            );
-
-            let sum = 0;
-
-            for (
-              let i = 0;
-              i < data.length;
-              i++
-            ) {
-              const normalized =
-                (data[i] - 128) /
-                128;
-
-              sum +=
-                normalized *
-                normalized;
-            }
-
-            const rms =
-              Math.sqrt(
-                sum /
-                  data.length
-              );
-
-            const currentVolume =
-              Math.min(
-                100,
-                Math.round(
-                  rms * 320
-                )
-              );
-
-            setVolume(
-              currentVolume
-            );
-
-            setIsSilent(
-              currentVolume <
-                5
-            );
-
-            ctx.clearRect(
-              0,
-              0,
-              canvas.width,
-              canvas.height
-            );
-
-            ctx.beginPath();
-
-            const sliceWidth =
-              canvas.width /
-              data.length;
-
-            for (
-              let i = 0;
-              i < data.length;
-              i++
-            ) {
-              const x =
-                i *
-                sliceWidth;
-
-              const y =
-                (data[i] / 255) *
-                canvas.height;
-
-              if (i === 0) {
-                ctx.moveTo(
-                  x,
-                  y
-                );
-              } else {
-                ctx.lineTo(
-                  x,
-                  y
-                );
-              }
-            }
-
-            ctx.strokeStyle =
-              "rgba(255,255,255,0.9)";
-
-            ctx.lineWidth = 2;
-
-            ctx.stroke();
-
-            animationRef.current =
-              requestAnimationFrame(
-                draw
-              );
-          };
-
-        draw();
-      } catch (error) {
-        console.warn(
-          "Visualizer error:",
-          error
-        );
-      }
-    };
-
-  /*
-   * 停止可视化
-   */
-  const stopVisualizer =
-    () => {
-      if (
-        animationRef.current
-      ) {
-        cancelAnimationFrame(
-          animationRef.current
-        );
-
-        animationRef.current =
-          null;
-      }
-
-      if (
-        audioContextRef.current
-      ) {
-        audioContextRef.current.close();
-
-        audioContextRef.current =
-          null;
-      }
-
-      analyserRef.current =
-        null;
-
-      setVolume(0);
-      setIsSilent(false);
-
-      const canvas =
-        canvasRef.current;
-
-      if (canvas) {
         const ctx =
           canvas.getContext(
             "2d"
           );
 
-        if (ctx) {
-          ctx.clearRect(
-            0,
-            0,
-            canvas.width,
-            canvas.height
-          );
+        if (!ctx) {
+          return;
         }
-      }
-    };
+
+        currentAnalyser.getByteTimeDomainData(
+          data
+        );
+
+        let sum = 0;
+
+        for (
+          let i = 0;
+          i < data.length;
+          i++
+        ) {
+          const normalized =
+            (data[i] - 128) /
+            128;
+
+          sum +=
+            normalized *
+            normalized;
+        }
+
+        const rms =
+          Math.sqrt(
+            sum /
+              data.length
+          );
+
+        const currentVolume =
+          Math.min(
+            100,
+            Math.round(
+              rms * 320
+            )
+          );
+
+        setVolume(
+          currentVolume
+        );
+
+        setIsSilent(
+          currentVolume < 5
+        );
+
+        ctx.clearRect(
+          0,
+          0,
+          canvas.width,
+          canvas.height
+        );
+
+        ctx.beginPath();
+
+        const sliceWidth =
+          canvas.width /
+          data.length;
+
+        for (
+          let i = 0;
+          i < data.length;
+          i++
+        ) {
+          const x =
+            i * sliceWidth;
+
+          const y =
+            (data[i] / 255) *
+            canvas.height;
+
+          if (i === 0) {
+            ctx.moveTo(x, y);
+          } else {
+            ctx.lineTo(x, y);
+          }
+        }
+
+        ctx.strokeStyle =
+          "rgba(255,255,255,0.9)";
+
+        ctx.lineWidth = 2;
+
+        ctx.stroke();
+
+        animationRef.current =
+          requestAnimationFrame(
+            draw
+          );
+      };
+
+      draw();
+    } catch (error) {
+      console.warn(
+        "Visualizer error:",
+        error
+      );
+    }
+  };
 
   /*
-   * 开始录音
+   * ============================
+   * 停止可视化
+   * ============================
    */
+
+  const stopVisualizer = () => {
+    if (animationRef.current) {
+      cancelAnimationFrame(
+        animationRef.current
+      );
+
+      animationRef.current =
+        null;
+    }
+
+    if (
+      audioContextRef.current
+    ) {
+      audioContextRef.current.close();
+
+      audioContextRef.current =
+        null;
+    }
+
+    analyserRef.current =
+      null;
+
+    setVolume(0);
+    setIsSilent(false);
+
+    const canvas =
+      canvasRef.current;
+
+    if (canvas) {
+      const ctx =
+        canvas.getContext("2d");
+
+      if (ctx) {
+        ctx.clearRect(
+          0,
+          0,
+          canvas.width,
+          canvas.height
+        );
+      }
+    }
+  };
+
+  /*
+   * ============================
+   * 开始录音
+   * ============================
+   */
+
   const startRecording =
     async () => {
       if (!session) {
@@ -953,10 +994,7 @@ useEffect(() => {
 
         recorder.start();
 
-        setRecording(
-          true
-        );
-
+        setRecording(true);
         setSeconds(0);
 
         timer.current =
@@ -969,7 +1007,12 @@ useEffect(() => {
             },
             1000
           );
-      } catch {
+      } catch (error) {
+        console.error(
+          "Microphone error:",
+          error
+        );
+
         setError(
           "无法访问麦克风，请允许浏览器使用麦克风。"
         );
@@ -977,105 +1020,120 @@ useEffect(() => {
     };
 
   /*
+   * ============================
    * 停止录音
+   * ============================
    */
-  const stopRecording =
-    () => {
-      if (
-        mediaRecorder.current
-          ?.state ===
-        "recording"
-      ) {
-        mediaRecorder.current.stop();
-      }
 
-      setRecording(
-        false
-      );
+  const stopRecording = () => {
+    if (
+      mediaRecorder.current
+        ?.state ===
+      "recording"
+    ) {
+      mediaRecorder.current.stop();
+    }
 
-      if (
+    setRecording(false);
+
+    if (timer.current) {
+      clearInterval(
         timer.current
-      ) {
-        clearInterval(
-          timer.current
-        );
+      );
 
-        timer.current =
-          null;
-      }
-    };
+      timer.current = null;
+    }
+  };
 
   /*
+   * ============================
    * 上传声音
+   * ============================
    */
-  const handleAudio =
-    (
-      event: React.ChangeEvent<HTMLInputElement>
-    ) => {
-      const file =
-        event.target.files?.[0];
 
-      if (!file) return;
+  const handleAudio = (
+    event: React.ChangeEvent<HTMLInputElement>
+  ) => {
+    const file =
+      event.target.files?.[0];
 
-      setInputName(
-        file.name
-      );
+    if (!file) return;
 
-      analyzeFile(
-        file,
-        "声音"
-      );
-    };
+    setInputName(
+      file.name
+    );
+
+    analyzeFile(
+      file,
+      "声音"
+    );
+  };
 
   /*
+   * ============================
    * 上传照片
+   * ============================
    */
-  const handlePhoto =
-    (
-      event: React.ChangeEvent<HTMLInputElement>
-    ) => {
-      const file =
-        event.target.files?.[0];
 
-      if (!file) return;
+  const handlePhoto = (
+    event: React.ChangeEvent<HTMLInputElement>
+  ) => {
+    const file =
+      event.target.files?.[0];
 
-      setInputName(
-        file.name
-      );
+    if (!file) return;
 
-      if (photo) {
-        URL.revokeObjectURL(
-          photo
-        );
-      }
-
-      const preview =
-        URL.createObjectURL(
-          file
-        );
-
-      setPhoto(
-        preview
-      );
-
-      analyzeFile(
-        file,
-        "照片"
-      );
-    };
-  const clearHistory = () => {
-  setHistory([]);
-
-  try {
-    localStorage.removeItem("pawtalk-history-v3");
-  } catch (error) {
-    console.warn(
-      "Failed to clear history:",
-      error
+    setInputName(
+      file.name
     );
-  }
-};
- const reset = () => {
+
+    if (photo) {
+      URL.revokeObjectURL(
+        photo
+      );
+    }
+
+    const preview =
+      URL.createObjectURL(
+        file
+      );
+
+    setPhoto(preview);
+
+    analyzeFile(
+      file,
+      "照片"
+    );
+  };
+
+  /*
+   * ============================
+   * 清空历史
+   * ============================
+   */
+
+  const clearHistory = () => {
+    setHistory([]);
+
+    try {
+      localStorage.removeItem(
+        "pawtalk-history-v3"
+      );
+    } catch (error) {
+      console.warn(
+        "Failed to clear history:",
+        error
+      );
+    }
+  };
+
+  /*
+   * ============================
+   * 重置分析
+   * ============================
+   */
+
+  const reset = () => {
     setResult(null);
     setInputName("");
     setError("");
@@ -1091,49 +1149,82 @@ useEffect(() => {
     setPhoto(null);
   };
 
-  const share =
-    async () => {
-      if (!result) return;
+  /*
+   * ============================
+   * 分享
+   * ============================
+   */
 
-      const text =
-        `PawTalk AI：${result.animal}｜${result.mood}｜置信度 ${result.confidence}%`;
+  const share = async () => {
+    if (!result) return;
 
-      try {
-        if (
-          navigator.share
-        ) {
-          await navigator.share(
-            {
-              title:
-                "PawTalk AI V3",
-              text,
-            }
-          );
-        } else {
-          await navigator.clipboard.writeText(
-            text
-          );
-        }
-      } catch {}
-    };
+    const text =
+      `PawTalk AI：${result.animal}｜${result.mood}｜置信度 ${result.confidence}%`;
+
+    try {
+      if (navigator.share) {
+        await navigator.share({
+          title:
+            "PawTalk AI V3",
+          text,
+        });
+      } else {
+        await navigator.clipboard.writeText(
+          text
+        );
+      }
+    } catch {}
+  };
+
+  /*
+   * ============================
+   * 退出登录
+   * ============================
+   */
 
   const logout = async () => {
-  const { error } = await supabase.auth.signOut();
+    try {
+      const { error } =
+        await supabase.auth.signOut();
 
-  if (error) {
-    console.error("Sign out failed:", error);
-    return;
-  }
+      if (error) {
+        console.error(
+          "Sign out failed:",
+          error
+        );
 
-  setSession(null);
-  setShowAccount(false);
-};
+        setError(
+          "退出登录失败，请重试。"
+        );
+
+        return;
+      }
+
+      setSession(null);
+      setResult(null);
+      setHistory([]);
+      setShowAccount(false);
+      setAvatarUrl(null);
+      setUses(0);
+      setError("");
+    } catch (error) {
+      console.error(
+        "Logout error:",
+        error
+      );
+
+      setError(
+        "退出登录失败，请重试。"
+      );
+    }
+  };
 
   /*
    * ============================
    * 登录加载状态
    * ============================
    */
+
   if (authLoading) {
     return (
       <main className="authPage">
@@ -1166,6 +1257,7 @@ useEffect(() => {
    * 未登录
    * ============================
    */
+
   if (!session) {
     return (
       <main className="authPage">
@@ -1200,139 +1292,150 @@ useEffect(() => {
    * PawTalk 主界面
    * ============================
    */
+
   return (
     <main>
-     <div className="navRight">
-  <span className="statusDot" />
+      <div className="navRight">
+        <span className="statusDot" />
 
-  真实 AI 多模态分析
+        真实 AI 多模态分析
 
-  <button
-    className="proBtn"
-    onClick={() => setShowPro(true)}
-  >
-    <Crown size={13} />
-    PRO
-  </button>
-       
-{session && (
-  <div className="accountArea">
-    <Avatar
-      userId={session.user.id}
-      email={session.user.email}
-      avatarUrl={avatarUrl}
-      onUploaded={(url) => {
-        setAvatarUrl(url);
-
-        setSession({
-          ...session,
-          user: {
-            ...session.user,
-            user_metadata: {
-              ...session.user.user_metadata,
-              avatar_url: url,
-            },
-          },
-        });
-      }}
-    />
-  </div>
-)}
-  {session && (
-    <div className="account">
-      <button
-        className="accountButton"
-        onClick={() =>
-          setShowAccount((value) => !value)
-        }
-        title={
-          session.user.email ||
-          "我的账户"
-        }
-      >
-        <div className="avatar">
-          {session.user.user_metadata
-            ?.avatar_url ? (
-            <img
-              src={
-                session.user
-                  .user_metadata
-                  .avatar_url
-              }
-              alt="头像"
-            />
-          ) : (
-            <User size={18} />
-          )}
-        </div>
-
-        <span className="accountName">
-          {session.user.user_metadata
-            ?.full_name ||
-            session.user.email?.split("@")[0] ||
-            "我的账户"}
-        </span>
-
-        <ChevronRight
-          size={15}
-          className={
-            showAccount
-              ? "rotate"
-              : ""
+        <button
+          className="proBtn"
+          onClick={() =>
+            setShowPro(true)
           }
-        />
-      </button>
+        >
+          <Crown size={13} />
+          PRO
+        </button>
 
-      {showAccount && (
-        <div className="accountMenu">
-          <div className="accountInfo">
-            <div className="avatar large">
-              {session.user.user_metadata
-                ?.avatar_url ? (
-                <img
-                  src={
-                    session.user
-                      .user_metadata
-                      .avatar_url
-                  }
-                  alt="头像"
-                />
-              ) : (
-                <User size={22} />
-              )}
-            </div>
+        {session && (
+          <div className="accountArea">
+            <Avatar
+              userId={session.user.id}
+              email={session.user.email}
+              avatarUrl={avatarUrl}
+              onUploaded={(url) => {
+                setAvatarUrl(url);
 
-            <div>
-              <strong>
+                setSession({
+                  ...session,
+                  user: {
+                    ...session.user,
+                    user_metadata: {
+                      ...session.user
+                        .user_metadata,
+                      avatar_url: url,
+                    },
+                  },
+                });
+              }}
+            />
+          </div>
+        )}
+
+        {session && (
+          <div className="account">
+            <button
+              type="button"
+              className="accountButton"
+              onClick={() =>
+                setShowAccount(
+                  (value) => !value
+                )
+              }
+              title={
+                session.user.email ||
+                "我的账户"
+              }
+            >
+              <div className="avatar">
+                {session.user
+                  .user_metadata
+                  ?.avatar_url ? (
+                  <img
+                    src={
+                      session.user
+                        .user_metadata
+                        .avatar_url
+                    }
+                    alt="头像"
+                  />
+                ) : (
+                  <User size={18} />
+                )}
+              </div>
+
+              <span className="accountName">
                 {session.user
                   .user_metadata
                   ?.full_name ||
-                  "PawTalk 用户"}
-              </strong>
+                  session.user.email?.split(
+                    "@"
+                  )[0] ||
+                  "我的账户"}
+              </span>
 
-              <small>
-                {session.user.email}
-              </small>
-            </div>
+              <ChevronRight
+                size={15}
+                className={
+                  showAccount
+                    ? "rotate"
+                    : ""
+                }
+              />
+            </button>
+
+            {showAccount && (
+              <div className="accountMenu">
+                <div className="accountInfo">
+                  <div className="avatar large">
+                    {session.user
+                      .user_metadata
+                      ?.avatar_url ? (
+                      <img
+                        src={
+                          session.user
+                            .user_metadata
+                            .avatar_url
+                        }
+                        alt="头像"
+                      />
+                    ) : (
+                      <User size={22} />
+                    )}
+                  </div>
+
+                  <div>
+                    <strong>
+                      {session.user
+                        .user_metadata
+                        ?.full_name ||
+                        "PawTalk 用户"}
+                    </strong>
+
+                    <small>
+                      {session.user.email}
+                    </small>
+                  </div>
+                </div>
+
+                <div className="accountDivider" />
+
+                <button
+                  type="button"
+                  className="logoutButton"
+                  onClick={logout}
+                >
+                  <LogOut size={16} />
+                  退出登录
+                </button>
+              </div>
+            )}
           </div>
-
-          <div className="accountDivider" />
-
-          <button
-            className="logoutButton"
-            onClick={async () => {
-              await supabase.auth.signOut();
-              setShowAccount(false);
-            }}
-          >
-            <button onClick={logout}>
-  退出登录
-</button>
-        </div>
-      )}
-    </div>
-  )}
-</div>  
+        )}
+      </div>
 
       <section className="hero">
         <div className="pill">
@@ -1401,6 +1504,7 @@ useEffect(() => {
             {animals.map(
               (item) => (
                 <button
+                  type="button"
                   key={
                     item.name
                   }
@@ -1435,15 +1539,14 @@ useEffect(() => {
 
           <div className="tabs">
             <button
+              type="button"
               className={
                 tab === "sound"
                   ? "active"
                   : ""
               }
               onClick={() =>
-                setTab(
-                  "sound"
-                )
+                setTab("sound")
               }
             >
               <Volume2 size={16} />
@@ -1451,15 +1554,14 @@ useEffect(() => {
             </button>
 
             <button
+              type="button"
               className={
                 tab === "photo"
                   ? "active"
                   : ""
               }
               onClick={() =>
-                setTab(
-                  "photo"
-                )
+                setTab("photo")
               }
             >
               <Camera size={16} />
@@ -1467,8 +1569,7 @@ useEffect(() => {
             </button>
           </div>
 
-          {tab ===
-          "sound" ? (
+          {tab === "sound" ? (
             <>
               <div
                 className={`recorder ${
@@ -1628,6 +1729,7 @@ useEffect(() => {
                     </div>
 
                     <button
+                      type="button"
                       className="primary stop"
                       onClick={
                         stopRecording
@@ -1667,6 +1769,7 @@ useEffect(() => {
                     </p>
 
                     <button
+                      type="button"
                       className="primary"
                       onClick={
                         startRecording
@@ -1898,6 +2001,7 @@ useEffect(() => {
 
               <div className="actions">
                 <button
+                  type="button"
                   onClick={
                     reset
                   }
@@ -1909,6 +2013,7 @@ useEffect(() => {
                 </button>
 
                 <button
+                  type="button"
                   onClick={
                     share
                   }
@@ -1934,6 +2039,7 @@ useEffect(() => {
           {history.length >
             0 && (
             <button
+              type="button"
               onClick={
                 clearHistory
               }
@@ -1956,6 +2062,7 @@ useEffect(() => {
             {history.map(
               (item) => (
                 <button
+                  type="button"
                   key={
                     item.id
                   }
@@ -2002,9 +2109,7 @@ useEffect(() => {
         <div
           className="modal"
           onClick={() =>
-            setShowPro(
-              false
-            )
+            setShowPro(false)
           }
         >
           <div
@@ -2032,11 +2137,10 @@ useEffect(() => {
             </div>
 
             <button
+              type="button"
               className="primary"
               onClick={() =>
-                setShowPro(
-                  false
-                )
+                setShowPro(false)
               }
             >
               先继续体验
