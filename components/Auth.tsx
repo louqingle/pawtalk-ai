@@ -63,6 +63,10 @@ export default function Auth({
               password,
             }
           );
+        console.log("LOGIN RESULT:", {
+  data,
+  error: loginError,
+});
 
         if (loginError) {
           throw loginError;
