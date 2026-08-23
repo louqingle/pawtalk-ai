@@ -1,8 +1,8 @@
 "use client";
- 
- import Auth from "@/components/Auth";
- import { createClient } from "@/lib/supabase/client";
- import Avatar from "@/components/Avatar";
+
+import { useEffect, useRef, useState } from "react";
+
+import {
   AudioLines,
   Cat,
   Dog,
@@ -30,8 +30,9 @@
 } from "lucide-react";
 
 import Auth from "@/components/Auth";
+import Avatar from "@/components/Avatar";
 import { createClient } from "@/lib/supabase/client";
-
+  
 type Animal = "猫咪" | "狗狗" | "鸟类" | "其他";
 type Tab = "sound" | "photo";
 
