@@ -30,7 +30,7 @@ import {
 
 import Auth from "@/components/Auth";
 import { createClient } from "@/lib/supabase/client";
-
+import Avatar from "@/components/Avatar";
 type Animal = "猫咪" | "狗狗" | "鸟类" | "其他";
 type Tab = "sound" | "photo";
 
@@ -76,7 +76,8 @@ export default function Home() {
 
   const [session, setSession] =
     useState<any>(null);
-
+  const [avatarUrl, setAvatarUrl] =
+  useState<string | null>(null);
   const [authLoading, setAuthLoading] =
     useState(true);
   const [showAccount, setShowAccount] =
@@ -150,6 +151,17 @@ export default function Home() {
    * Supabase 登录状态
    */
   useEffect(() => {
+    useEffect(() => {
+  if (!session?.user) {
+    setAvatarUrl(null);
+    return;
+  }
+
+  setAvatarUrl(
+    session.user.user_metadata?.avatar_url ||
+      null
+  );
+}, [session]);
     let mounted = true;
 
     const loadSession =
@@ -1191,7 +1203,30 @@ export default function Home() {
     <Crown size={13} />
     PRO
   </button>
+       
+{session && (
+  <div className="accountArea">
+    <Avatar
+      userId={session.user.id}
+      email={session.user.email}
+      avatarUrl={avatarUrl}
+      onUploaded={(url) => {
+        setAvatarUrl(url);
 
+        setSession({
+          ...session,
+          user: {
+            ...session.user,
+            user_metadata: {
+              ...session.user.user_metadata,
+              avatar_url: url,
+            },
+          },
+        });
+      }}
+    />
+  </div>
+)}
   {session && (
     <div className="account">
       <button
