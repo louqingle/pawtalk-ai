@@ -1042,8 +1042,19 @@ export default function Home() {
         "照片"
       );
     };
+  const clearHistory = () => {
+  setHistory([]);
 
-  const reset = () => {
+  try {
+    localStorage.removeItem("pawtalk-history-v3");
+  } catch (error) {
+    console.warn(
+      "Failed to clear history:",
+      error
+    );
+  }
+};
+ const reset = () => {
     setResult(null);
     setInputName("");
     setError("");
