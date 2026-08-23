@@ -1301,127 +1301,91 @@ export default function Home() {
   return (
     <main>
       <div className="navRight">
-        <span className="statusDot" />
+  <span className="statusDot" />
+  <span>真实 AI 多模态分析</span>
 
-        真实 AI 多模态分析
+  <button
+    className="proBtn"
+    onClick={() => setShowPro(true)}
+  >
+    <Crown size={13} />
+    PRO
+  </button>
+
+  <div
+    style={{
+      display: "flex",
+      alignItems: "center",
+      gap: "10px",
+      position: "relative",
+    }}
+  >
+    <Avatar
+      userId={session.user.id}
+      email={session.user.email}
+      avatarUrl={avatarUrl}
+      onUploaded={(url) => {
+        setAvatarUrl(url);
+      }}
+    />
+
+    <button
+      type="button"
+      onClick={() =>
+        setShowAccount((v) => !v)
+      }
+      style={{
+        background: "none",
+        border: "none",
+        color: "white",
+        cursor: "pointer",
+        fontSize: "14px",
+      }}
+    >
+      {session.user.email}
+    </button>
+
+    {showAccount && (
+      <div
+        style={{
+          position: "absolute",
+          right: 0,
+          top: "48px",
+          width: "240px",
+          padding: "16px",
+          background: "#111",
+          border: "1px solid rgba(255,255,255,.12)",
+          borderRadius: "16px",
+          zIndex: 9999,
+        }}
+      >
+        <div
+          style={{
+            marginBottom: "14px",
+            wordBreak: "break-all",
+          }}
+        >
+          {session.user.email}
+        </div>
 
         <button
-          className="proBtn"
-          onClick={() =>
-            setShowPro(true)
-          }
+          type="button"
+          onClick={logout}
+          style={{
+            width: "100%",
+            padding: "10px",
+            borderRadius: "10px",
+            border: "none",
+            cursor: "pointer",
+          }}
         >
-          <Crown size={13} />
-          PRO
+          <LogOut size={15} />
+          {" "}退出登录
         </button>
-
-        {/* ======================
-            用户账户
-           ====================== */}
-
-        <div className="account">
-          <button
-            className="accountButton"
-            onClick={() =>
-              setShowAccount(
-                (value) =>
-                  !value
-              )
-            }
-            title={
-              session.user.email ||
-              "我的账户"
-            }
-          >
-            <div className="avatar">
-              {avatarUrl ? (
-                <img
-                  src={avatarUrl}
-                  alt="用户头像"
-                  onError={() =>
-                    setAvatarUrl(
-                      null
-                    )
-                  }
-                />
-              ) : (
-                <User size={18} />
-              )}
-            </div>
-
-            <span className="accountName">
-              {session.user
-                .user_metadata
-                ?.full_name ||
-                session.user.email?.split(
-                  "@"
-                )[0] ||
-                "我的账户"}
-            </span>
-
-            <ChevronRight
-              size={15}
-              className={
-                showAccount
-                  ? "rotate"
-                  : ""
-              }
-            />
-          </button>
-
-          {showAccount && (
-            <div className="accountMenu">
-              <div className="accountInfo">
-                <div className="avatar large">
-                  {avatarUrl ? (
-                    <img
-                      src={
-                        avatarUrl
-                      }
-                      alt="用户头像"
-                      onError={() =>
-                        setAvatarUrl(
-                          null
-                        )
-                      }
-                    />
-                  ) : (
-                    <User size={22} />
-                  )}
-                </div>
-
-                <div>
-                  <strong>
-                    {session.user
-                      .user_metadata
-                      ?.full_name ||
-                      "PawTalk 用户"}
-                  </strong>
-
-                  <small>
-                    {
-                      session.user
-                        .email
-                    }
-                  </small>
-                </div>
-              </div>
-
-              <div className="accountDivider" />
-
-              <button
-                className="logoutButton"
-                onClick={
-                  logout
-                }
-              >
-                <LogOut size={16} />
-                退出登录
-              </button>
-            </div>
-          )}
-        </div>
       </div>
+    )}
+  </div>
+</div>
 
       <section className="hero">
         <div className="pill">
