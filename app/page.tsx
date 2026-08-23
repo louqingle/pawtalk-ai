@@ -1,7 +1,8 @@
 "use client";
-
-import { useEffect, useRef, useState } from "react";
-import {
+ 
+ import Auth from "@/components/Auth";
+ import { createClient } from "@/lib/supabase/client";
+ import Avatar from "@/components/Avatar";
   AudioLines,
   Cat,
   Dog,
