@@ -151,49 +151,57 @@ export default function Home() {
    * Supabase 登录状态
    */
   useEffect(() => {
-    useEffect(() => {
   if (!session?.user) {
     setAvatarUrl(null);
     return;
   }
 
   setAvatarUrl(
-    session.user.user_metadata?.avatar_url ||
-      null
+    session.user.user_metadata?.avatar_url || null
   );
 }, [session]);
-    let mounted = true;
 
-    const loadSession =
-      async () => {
-        const {
-          data: { session },
-        } =
-          await supabase.auth.getSession();
+useEffect(() => {
+  let mounted = true;
 
-        if (mounted) {
-          setSession(session);
-          setAuthLoading(false);
-        }
-      };
+  const loadSession = async () => {
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
 
-    loadSession();
+      if (mounted) {
+        setSession(session);
+        setAuthLoading(false);
+      }
+    } catch (error) {
+      console.error("Supabase session check failed:", error);
 
-    const {
-      data: { subscription },
-    } =
-      supabase.auth.onAuthStateChange(
-        (_event, session) => {
-          setSession(session);
-          setAuthLoading(false);
-        }
-      );
+      if (mounted) {
+        setSession(null);
+        setAuthLoading(false);
+      }
+    }
+  };
 
-    return () => {
-      mounted = false;
-      subscription.unsubscribe();
-    };
-  }, []);
+  loadSession();
+
+  const {
+    data: { subscription },
+  } = supabase.auth.onAuthStateChange(
+    (_event, session) => {
+      if (mounted) {
+        setSession(session);
+        setAuthLoading(false);
+      }
+    }
+  );
+
+  return () => {
+    mounted = false;
+    subscription.unsubscribe();
+  };
+}, [supabase]);
 
   /*
    * 本地历史记录
