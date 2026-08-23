@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { createClient } from "@/lib/supabase/server";
 
 const MODEL =
   process.env.DEEPSEEK_MODEL ||
@@ -11,16 +12,12 @@ function json(
   data: unknown,
   status = 200
 ) {
-  return NextResponse.json(
-    data,
-    {
-      status,
-      headers: {
-        "Cache-Control":
-          "no-store",
-      },
-    }
-  );
+  return NextResponse.json(data, {
+    status,
+    headers: {
+      "Cache-Control": "no-store",
+    },
+  });
 }
 
 async function deepseek(
@@ -29,8 +26,7 @@ async function deepseek(
     content: string;
   }>
 ) {
-  const key =
-    process.env.DEEPSEEK_API_KEY;
+  const key = process.env.DEEPSEEK_API_KEY;
 
   if (!key) {
     throw new Error(
@@ -38,40 +34,28 @@ async function deepseek(
     );
   }
 
-  const response =
-    await fetch(
-      DEEPSEEK_URL,
-      {
-        method: "POST",
-
-        headers: {
-          "Content-Type":
-            "application/json",
-
-          Authorization:
-            `Bearer ${key}`,
+  const response = await fetch(
+    DEEPSEEK_URL,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${key}`,
+      },
+      body: JSON.stringify({
+        model: MODEL,
+        messages,
+        response_format: {
+          type: "json_object",
         },
+        temperature: 0.3,
+        max_tokens: 800,
+        stream: false,
+      }),
+    }
+  );
 
-        body: JSON.stringify({
-          model: MODEL,
-
-          messages,
-
-          response_format: {
-            type: "json_object",
-          },
-
-          temperature: 0.3,
-
-          max_tokens: 800,
-
-          stream: false,
-        }),
-      }
-    );
-
-  const body =
-    await response.json();
+  const body = await response.json();
 
   if (!response.ok) {
     throw new Error(
@@ -140,6 +124,96 @@ export async function POST(
   req: NextRequest
 ) {
   try {
+    // ==========================================
+    // 1. 验证 Supabase 登录状态
+    // ==========================================
+
+    const supabase = await createClient();
+
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
+
+    if (
+      userError ||
+      !user
+    ) {
+      return json(
+        {
+          error: "请先登录",
+          code: "NOT_AUTHENTICATED",
+        },
+        401
+      );
+    }
+
+    // ==========================================
+    // 2. 服务端扣除额度
+    // ==========================================
+
+    const {
+      data: creditResult,
+      error: creditError,
+    } = await supabase.rpc(
+      "consume_free_credit"
+    );
+
+    if (creditError) {
+      console.error(
+        "Credit error:",
+        creditError
+      );
+
+      return json(
+        {
+          error:
+            "额度系统暂时不可用，请稍后再试",
+          code: "CREDIT_SYSTEM_ERROR",
+        },
+        500
+      );
+    }
+
+    // ==========================================
+    // 3. 免费次数用完
+    // ==========================================
+
+    if (
+      !creditResult?.success
+    ) {
+      if (
+        creditResult?.error ===
+        "NO_CREDITS"
+      ) {
+        return json(
+          {
+            error:
+              "免费次数已经用完",
+            code: "NO_CREDITS",
+            remaining: 0,
+            upgradeRequired: true,
+          },
+          403
+        );
+      }
+
+      return json(
+        {
+          error:
+            "无法使用分析功能",
+          code:
+            creditResult?.error ||
+            "CREDIT_ERROR",
+        },
+        403
+      );
+    }
+
+    // ==========================================
+    // 4. 获取上传数据
+    // ==========================================
+
     const form =
       await req.formData();
 
@@ -183,6 +257,10 @@ export async function POST(
       );
     }
 
+    // ==========================================
+    // 5. 读取音频特征
+    // ==========================================
+
     const audioFeaturesRaw =
       String(
         form.get(
@@ -191,10 +269,7 @@ export async function POST(
       );
 
     let audioFeatures:
-      | Record<
-          string,
-          number
-        >
+      | Record<string, number>
       | null = null;
 
     if (
@@ -206,8 +281,7 @@ export async function POST(
             audioFeaturesRaw
           );
       } catch {
-        audioFeatures =
-          null;
+        audioFeatures = null;
       }
     }
 
@@ -218,9 +292,10 @@ export async function POST(
 
 `;
 
-    /*
-     * 声音分析
-     */
+    // ==========================================
+    // 6. 声音分析
+    // ==========================================
+
     if (
       source !== "照片"
     ) {
@@ -262,12 +337,10 @@ ${
 `;
     }
 
-    /*
-     * 照片分析
-     *
-     * 当前版本仍然使用文本模型，
-     * 因此不会假装模型真的看到了图片。
-     */
+    // ==========================================
+    // 7. 照片分析
+    // ==========================================
+
     if (
       source === "照片"
     ) {
@@ -291,9 +364,12 @@ ${
     }
 
     prompt += `
-
 请严格返回 JSON。
 `;
+
+    // ==========================================
+    // 8. 调用 DeepSeek
+    // ==========================================
 
     const response =
       await deepseek([
@@ -323,6 +399,10 @@ ${
       );
     }
 
+    // ==========================================
+    // 9. 解析 AI JSON
+    // ==========================================
+
     let parsed: any;
 
     try {
@@ -341,6 +421,10 @@ ${
       );
     }
 
+    // ==========================================
+    // 10. 数值限制
+    // ==========================================
+
     const clamp =
       (value: any) => {
         const number =
@@ -358,9 +442,7 @@ ${
           1,
           Math.min(
             99,
-            Math.round(
-              number
-            )
+            Math.round(number)
           )
         );
       };
@@ -413,11 +495,26 @@ ${
       animal,
 
       source,
+
+      // 给前端显示剩余次数
+      remaining:
+        creditResult?.is_pro
+          ? -1
+          : Number(
+              creditResult?.remaining ??
+                0
+            ),
+
+      isPro:
+        Boolean(
+          creditResult?.is_pro
+        ),
     };
 
     return json(
       result
     );
+
   } catch (
     error: any
   ) {
