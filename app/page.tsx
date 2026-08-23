@@ -24,7 +24,12 @@ import {
   Volume2,
   Crown,
   LockKeyhole,
+  LogOut,
+  User,
 } from "lucide-react";
+
+import Auth from "@/components/Auth";
+import { createClient } from "@/lib/supabase/client";
 
 type Animal = "猫咪" | "狗狗" | "鸟类" | "其他";
 type Tab = "sound" | "photo";
@@ -48,13 +53,33 @@ const animals: {
   name: Animal;
   icon: React.ReactNode;
 }[] = [
-  { name: "猫咪", icon: <Cat size={22} /> },
-  { name: "狗狗", icon: <Dog size={22} /> },
-  { name: "鸟类", icon: <Bird size={22} /> },
-  { name: "其他", icon: <CircleHelp size={22} /> },
+  {
+    name: "猫咪",
+    icon: <Cat size={22} />,
+  },
+  {
+    name: "狗狗",
+    icon: <Dog size={22} />,
+  },
+  {
+    name: "鸟类",
+    icon: <Bird size={22} />,
+  },
+  {
+    name: "其他",
+    icon: <CircleHelp size={22} />,
+  },
 ];
 
 export default function Home() {
+  const supabase = createClient();
+
+  const [session, setSession] =
+    useState<any>(null);
+
+  const [authLoading, setAuthLoading] =
+    useState(true);
+
   const [animal, setAnimal] =
     useState<Animal>("猫咪");
 
@@ -120,7 +145,53 @@ export default function Home() {
   const canvasRef =
     useRef<HTMLCanvasElement | null>(null);
 
+  /*
+   * Supabase 登录状态
+   */
   useEffect(() => {
+    let mounted = true;
+
+    const loadSession =
+      async () => {
+        const {
+          data: { session },
+        } =
+          await supabase.auth.getSession();
+
+        if (mounted) {
+          setSession(session);
+          setAuthLoading(false);
+        }
+      };
+
+    loadSession();
+
+    const {
+      data: { subscription },
+    } =
+      supabase.auth.onAuthStateChange(
+        (_event, session) => {
+          setSession(session);
+          setAuthLoading(false);
+        }
+      );
+
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
+  }, []);
+
+  /*
+   * 本地历史记录
+   *
+   * 注意：
+   * 这里只保存历史显示，
+   * 不再作为真正额度依据。
+   */
+  useEffect(() => {
+    if (!session) return;
+
     try {
       setHistory(
         JSON.parse(
@@ -129,16 +200,22 @@ export default function Home() {
           ) || "[]"
         )
       );
-
-      setUses(
-        Number(
-          localStorage.getItem(
-            "pawtalk-uses-v3"
-          ) || 0
-        )
-      );
     } catch {}
+  }, [session]);
 
+  useEffect(() => {
+    if (!session) return;
+
+    localStorage.setItem(
+      "pawtalk-history-v3",
+      JSON.stringify(history)
+    );
+  }, [history, session]);
+
+  /*
+   * 页面卸载清理
+   */
+  useEffect(() => {
     return () => {
       if (timer.current) {
         clearInterval(timer.current);
@@ -156,470 +233,559 @@ export default function Home() {
     };
   }, []);
 
-  useEffect(() => {
-    localStorage.setItem(
-      "pawtalk-history-v3",
-      JSON.stringify(history)
-    );
-  }, [history]);
+  /*
+   * 获取服务端额度
+   */
+  const loadCredits =
+    async () => {
+      try {
+        const response =
+          await fetch(
+            "/api/credits",
+            {
+              method: "GET",
+              cache: "no-store",
+            }
+          );
+
+        if (!response.ok) {
+          return;
+        }
+
+        const data =
+          await response.json();
+
+        if (
+          typeof data.used ===
+          "number"
+        ) {
+          setUses(data.used);
+        } else if (
+          typeof data.remaining ===
+          "number"
+        ) {
+          setUses(
+            Math.max(
+              0,
+              5 - data.remaining
+            )
+          );
+        }
+      } catch {
+        // 额度接口不存在时不阻塞页面
+      }
+    };
 
   useEffect(() => {
-    localStorage.setItem(
-      "pawtalk-uses-v3",
-      String(uses)
-    );
-  }, [uses]);
+    if (session) {
+      loadCredits();
+    }
+  }, [session]);
 
   /*
    * 浏览器端音频特征提取
    */
-  const extractAudioFeatures = async (
-    file: File
-  ): Promise<Record<string, number> | null> => {
-    try {
-      const arrayBuffer =
-        await file.arrayBuffer();
+  const extractAudioFeatures =
+    async (
+      file: File
+    ): Promise<
+      Record<string, number> | null
+    > => {
+      try {
+        const arrayBuffer =
+          await file.arrayBuffer();
 
-      const AudioContextClass =
-        window.AudioContext ||
-        (window as any).webkitAudioContext;
+        const AudioContextClass =
+          window.AudioContext ||
+          (window as any)
+            .webkitAudioContext;
 
-      if (!AudioContextClass) {
-        return null;
-      }
-
-      const audioContext =
-        new AudioContextClass();
-
-      const audioBuffer =
-        await audioContext.decodeAudioData(
-          arrayBuffer
-        );
-
-      const channelData =
-        audioBuffer.getChannelData(0);
-
-      const sampleRate =
-        audioBuffer.sampleRate;
-
-      let sumSquares = 0;
-      let peak = 0;
-      let zeroCrossings = 0;
-
-      for (
-        let i = 0;
-        i < channelData.length;
-        i++
-      ) {
-        const value =
-          channelData[i];
-
-        sumSquares +=
-          value * value;
-
-        const absolute =
-          Math.abs(value);
-
-        if (absolute > peak) {
-          peak = absolute;
+        if (!AudioContextClass) {
+          return null;
         }
 
-        if (i > 0) {
-          const previous =
-            channelData[i - 1];
+        const audioContext =
+          new AudioContextClass();
 
-          if (
-            (previous >= 0 &&
-              value < 0) ||
-            (previous < 0 &&
-              value >= 0)
-          ) {
-            zeroCrossings++;
+        const audioBuffer =
+          await audioContext.decodeAudioData(
+            arrayBuffer
+          );
+
+        const channelData =
+          audioBuffer.getChannelData(
+            0
+          );
+
+        const sampleRate =
+          audioBuffer.sampleRate;
+
+        let sumSquares = 0;
+        let peak = 0;
+        let zeroCrossings = 0;
+
+        for (
+          let i = 0;
+          i < channelData.length;
+          i++
+        ) {
+          const value =
+            channelData[i];
+
+          sumSquares +=
+            value * value;
+
+          const absolute =
+            Math.abs(value);
+
+          if (absolute > peak) {
+            peak = absolute;
+          }
+
+          if (i > 0) {
+            const previous =
+              channelData[
+                i - 1
+              ];
+
+            if (
+              (previous >= 0 &&
+                value < 0) ||
+              (previous < 0 &&
+                value >= 0)
+            ) {
+              zeroCrossings++;
+            }
           }
         }
-      }
 
-      const sampleCount =
-        Math.max(
-          channelData.length,
-          1
-        );
+        const sampleCount =
+          Math.max(
+            channelData.length,
+            1
+          );
 
-      const rms =
-        Math.sqrt(
-          sumSquares /
-            sampleCount
-        );
+        const rms =
+          Math.sqrt(
+            sumSquares /
+              sampleCount
+          );
 
-      const zeroCrossingRate =
-        zeroCrossings /
-        sampleCount;
+        const zeroCrossingRate =
+          zeroCrossings /
+          sampleCount;
 
-      const estimatedFrequency =
-        (zeroCrossingRate *
-          sampleRate) /
-        2;
+        const estimatedFrequency =
+          (zeroCrossingRate *
+            sampleRate) /
+          2;
 
-      const silenceThreshold =
-        0.01;
+        const silenceThreshold =
+          0.01;
 
-      let silentSamples = 0;
+        let silentSamples = 0;
 
-      for (
-        let i = 0;
-        i < channelData.length;
-        i++
-      ) {
-        if (
-          Math.abs(
-            channelData[i]
-          ) < silenceThreshold
+        for (
+          let i = 0;
+          i < channelData.length;
+          i++
         ) {
-          silentSamples++;
+          if (
+            Math.abs(
+              channelData[i]
+            ) <
+            silenceThreshold
+          ) {
+            silentSamples++;
+          }
         }
-      }
 
-      const silenceRatio =
-        silentSamples /
-        sampleCount;
+        const silenceRatio =
+          silentSamples /
+          sampleCount;
 
-      const features = {
-        duration: Number(
-          audioBuffer.duration.toFixed(
-            2
-          )
-        ),
-
-        rms: Number(
-          rms.toFixed(5)
-        ),
-
-        peak: Number(
-          peak.toFixed(5)
-        ),
-
-        silenceRatio: Number(
-          silenceRatio.toFixed(3)
-        ),
-
-        zeroCrossingRate: Number(
-          zeroCrossingRate.toFixed(
-            5
-          )
-        ),
-
-        estimatedFrequency:
-          Number(
-            estimatedFrequency.toFixed(
-              1
+        const features = {
+          duration: Number(
+            audioBuffer.duration.toFixed(
+              2
             )
           ),
 
-        sampleRate,
-      };
-
-      await audioContext.close();
-
-      return features;
-    } catch (error) {
-      console.warn(
-        "Audio feature extraction failed:",
-        error
-      );
-
-      return null;
-    }
-  };
-
-  /*
-   * 调用后端 DeepSeek
-   */
-  const analyzeFile = async (
-    file: File,
-    source: "声音" | "照片"
-  ) => {
-    if (uses >= 5) {
-      setShowPro(true);
-      return;
-    }
-
-    setError("");
-    setAnalyzing(true);
-    setResult(null);
-
-    try {
-      let audioFeatures:
-        | Record<string, number>
-        | null = null;
-
-      if (source === "声音") {
-        audioFeatures =
-          await extractAudioFeatures(
-            file
-          );
-      }
-
-      const fd =
-        new FormData();
-
-      fd.append(
-        "animal",
-        animal
-      );
-
-      fd.append(
-        "source",
-        source
-      );
-
-      fd.append(
-        "file",
-        file
-      );
-
-      if (audioFeatures) {
-        fd.append(
-          "audioFeatures",
-          JSON.stringify(
-            audioFeatures
-          )
-        );
-      }
-
-      const response =
-        await fetch(
-          "/api/analyze",
-          {
-            method: "POST",
-            body: fd,
-          }
-        );
-
-      const data =
-        await response.json();
-
-      if (!response.ok) {
-        throw new Error(
-          data.error ||
-            "分析失败"
-        );
-      }
-
-      const newResult: Result = {
-        ...data,
-        id: crypto.randomUUID(),
-        createdAt:
-          new Date().toLocaleTimeString(
-            "zh-CN",
-            {
-              hour: "2-digit",
-              minute: "2-digit",
-            }
+          rms: Number(
+            rms.toFixed(5)
           ),
-        source,
-      };
 
-      setResult(
-        newResult
-      );
+          peak: Number(
+            peak.toFixed(5)
+          ),
 
-      setHistory(
-        (items) =>
-          [
-            newResult,
-            ...items,
-          ].slice(0, 12)
-      );
+          silenceRatio: Number(
+            silenceRatio.toFixed(3)
+          ),
 
-      setUses(
-        (value) =>
-          value + 1
-      );
-    } catch (error: any) {
-      setError(
-        error?.message ||
-          "分析失败，请重试"
-      );
-    } finally {
-      setAnalyzing(false);
-    }
-  };
+          zeroCrossingRate:
+            Number(
+              zeroCrossingRate.toFixed(
+                5
+              )
+            ),
+
+          estimatedFrequency:
+            Number(
+              estimatedFrequency.toFixed(
+                1
+              )
+            ),
+
+          sampleRate,
+        };
+
+        await audioContext.close();
+
+        return features;
+      } catch (error) {
+        console.warn(
+          "Audio feature extraction failed:",
+          error
+        );
+
+        return null;
+      }
+    };
 
   /*
-   * 实时绘制声音波形
+   * 调用后端 AI
    */
-  const startVisualizer = (
-    stream: MediaStream
-  ) => {
-    try {
-      const AudioContextClass =
-        window.AudioContext ||
-        (window as any).webkitAudioContext;
-
-      if (!AudioContextClass) {
+  const analyzeFile =
+    async (
+      file: File,
+      source:
+        | "声音"
+        | "照片"
+    ) => {
+      if (!session) {
+        setError(
+          "请先登录后再进行分析。"
+        );
         return;
       }
 
-      const audioContext =
-        new AudioContextClass();
+      if (uses >= 5) {
+        setShowPro(true);
+        return;
+      }
 
-      const analyser =
-        audioContext.createAnalyser();
+      setError("");
+      setAnalyzing(true);
+      setResult(null);
 
-      analyser.fftSize = 256;
-      analyser.smoothingTimeConstant =
-        0.8;
+      try {
+        let audioFeatures:
+          | Record<
+              string,
+              number
+            >
+          | null = null;
 
-      const source =
-        audioContext.createMediaStreamSource(
-          stream
+        if (
+          source === "声音"
+        ) {
+          audioFeatures =
+            await extractAudioFeatures(
+              file
+            );
+        }
+
+        const fd =
+          new FormData();
+
+        fd.append(
+          "animal",
+          animal
         );
 
-      source.connect(
-        analyser
-      );
-
-      audioContextRef.current =
-        audioContext;
-
-      analyserRef.current =
-        analyser;
-
-      const data =
-        new Uint8Array(
-          analyser.fftSize
+        fd.append(
+          "source",
+          source
         );
 
-      const draw =
-        () => {
-          const canvas =
-            canvasRef.current;
+        fd.append(
+          "file",
+          file
+        );
 
-          const currentAnalyser =
-            analyserRef.current;
+        if (audioFeatures) {
+          fd.append(
+            "audioFeatures",
+            JSON.stringify(
+              audioFeatures
+            )
+          );
+        }
+
+        const response =
+          await fetch(
+            "/api/analyze",
+            {
+              method: "POST",
+              body: fd,
+            }
+          );
+
+        const data =
+          await response.json();
+
+        if (!response.ok) {
+          if (
+            response.status ===
+            401
+          ) {
+            setSession(null);
+
+            throw new Error(
+              "登录状态已失效，请重新登录。"
+            );
+          }
 
           if (
-            !canvas ||
-            !currentAnalyser
+            response.status ===
+            402
           ) {
-            return;
+            setUses(5);
+            setShowPro(true);
+
+            throw new Error(
+              "免费次数已经用完。"
+            );
           }
 
-          const ctx =
-            canvas.getContext(
-              "2d"
-            );
-
-          if (!ctx) {
-            return;
-          }
-
-          currentAnalyser.getByteTimeDomainData(
-            data
+          throw new Error(
+            data.error ||
+              "分析失败"
           );
+        }
 
-          let sum = 0;
+        const newResult: Result =
+          {
+            ...data,
+            id: crypto.randomUUID(),
+            createdAt:
+              new Date().toLocaleTimeString(
+                "zh-CN",
+                {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                }
+              ),
+            source,
+          };
 
-          for (
-            let i = 0;
-            i < data.length;
-            i++
-          ) {
-            const normalized =
-              (data[i] - 128) /
-              128;
+        setResult(
+          newResult
+        );
 
-            sum +=
-              normalized *
-              normalized;
-          }
+        setHistory(
+          (items) =>
+            [
+              newResult,
+              ...items,
+            ].slice(0, 12)
+        );
 
-          const rms =
-            Math.sqrt(
-              sum /
-                data.length
-            );
-
-          const currentVolume =
-            Math.min(
-              100,
-              Math.round(
-                rms * 320
-              )
-            );
-
-          setVolume(
-            currentVolume
-          );
-
-          setIsSilent(
-            currentVolume <
-              5
-          );
-
-          ctx.clearRect(
-            0,
-            0,
-            canvas.width,
-            canvas.height
-          );
-
-          ctx.beginPath();
-
-          const sliceWidth =
-            canvas.width /
-            data.length;
-
-          for (
-            let i = 0;
-            i < data.length;
-            i++
-          ) {
-            const x =
-              i *
-              sliceWidth;
-
-            const y =
-              (data[i] / 255) *
-              canvas.height;
-
-            if (i === 0) {
-              ctx.moveTo(
-                x,
-                y
-              );
-            } else {
-              ctx.lineTo(
-                x,
-                y
-              );
-            }
-          }
-
-          ctx.strokeStyle =
-            "rgba(255,255,255,0.9)";
-
-          ctx.lineWidth = 2;
-
-          ctx.stroke();
-
-          animationRef.current =
-            requestAnimationFrame(
-              draw
-            );
-        };
-
-      draw();
-    } catch (error) {
-      console.warn(
-        "Visualizer error:",
-        error
-      );
-    }
-  };
+        /*
+         * 不再通过 localStorage
+         * 扣次数。
+         *
+         * 服务端负责真实额度。
+         */
+        await loadCredits();
+      } catch (error: any) {
+        setError(
+          error?.message ||
+            "分析失败，请重试"
+        );
+      } finally {
+        setAnalyzing(false);
+      }
+    };
 
   /*
-   * 停止声音可视化
+   * 实时声音可视化
+   */
+  const startVisualizer =
+    (
+      stream: MediaStream
+    ) => {
+      try {
+        const AudioContextClass =
+          window.AudioContext ||
+          (window as any)
+            .webkitAudioContext;
+
+        if (!AudioContextClass) {
+          return;
+        }
+
+        const audioContext =
+          new AudioContextClass();
+
+        const analyser =
+          audioContext.createAnalyser();
+
+        analyser.fftSize = 256;
+        analyser.smoothingTimeConstant =
+          0.8;
+
+        const source =
+          audioContext.createMediaStreamSource(
+            stream
+          );
+
+        source.connect(
+          analyser
+        );
+
+        audioContextRef.current =
+          audioContext;
+
+        analyserRef.current =
+          analyser;
+
+        const data =
+          new Uint8Array(
+            analyser.fftSize
+          );
+
+        const draw =
+          () => {
+            const canvas =
+              canvasRef.current;
+
+            const currentAnalyser =
+              analyserRef.current;
+
+            if (
+              !canvas ||
+              !currentAnalyser
+            ) {
+              return;
+            }
+
+            const ctx =
+              canvas.getContext(
+                "2d"
+              );
+
+            if (!ctx) {
+              return;
+            }
+
+            currentAnalyser.getByteTimeDomainData(
+              data
+            );
+
+            let sum = 0;
+
+            for (
+              let i = 0;
+              i < data.length;
+              i++
+            ) {
+              const normalized =
+                (data[i] - 128) /
+                128;
+
+              sum +=
+                normalized *
+                normalized;
+            }
+
+            const rms =
+              Math.sqrt(
+                sum /
+                  data.length
+              );
+
+            const currentVolume =
+              Math.min(
+                100,
+                Math.round(
+                  rms * 320
+                )
+              );
+
+            setVolume(
+              currentVolume
+            );
+
+            setIsSilent(
+              currentVolume <
+                5
+            );
+
+            ctx.clearRect(
+              0,
+              0,
+              canvas.width,
+              canvas.height
+            );
+
+            ctx.beginPath();
+
+            const sliceWidth =
+              canvas.width /
+              data.length;
+
+            for (
+              let i = 0;
+              i < data.length;
+              i++
+            ) {
+              const x =
+                i *
+                sliceWidth;
+
+              const y =
+                (data[i] / 255) *
+                canvas.height;
+
+              if (i === 0) {
+                ctx.moveTo(
+                  x,
+                  y
+                );
+              } else {
+                ctx.lineTo(
+                  x,
+                  y
+                );
+              }
+            }
+
+            ctx.strokeStyle =
+              "rgba(255,255,255,0.9)";
+
+            ctx.lineWidth = 2;
+
+            ctx.stroke();
+
+            animationRef.current =
+              requestAnimationFrame(
+                draw
+              );
+          };
+
+        draw();
+      } catch (error) {
+        console.warn(
+          "Visualizer error:",
+          error
+        );
+      }
+    };
+
+  /*
+   * 停止可视化
    */
   const stopVisualizer =
     () => {
@@ -674,6 +840,13 @@ export default function Home() {
    */
   const startRecording =
     async () => {
+      if (!session) {
+        setError(
+          "请先登录。"
+        );
+        return;
+      }
+
       if (uses >= 5) {
         setShowPro(true);
         return;
@@ -814,59 +987,61 @@ export default function Home() {
   /*
    * 上传声音
    */
-  const handleAudio = (
-    event: React.ChangeEvent<HTMLInputElement>
-  ) => {
-    const file =
-      event.target.files?.[0];
+  const handleAudio =
+    (
+      event: React.ChangeEvent<HTMLInputElement>
+    ) => {
+      const file =
+        event.target.files?.[0];
 
-    if (!file) return;
+      if (!file) return;
 
-    setInputName(
-      file.name
-    );
+      setInputName(
+        file.name
+      );
 
-    analyzeFile(
-      file,
-      "声音"
-    );
-  };
+      analyzeFile(
+        file,
+        "声音"
+      );
+    };
 
   /*
    * 上传照片
    */
-  const handlePhoto = (
-    event: React.ChangeEvent<HTMLInputElement>
-  ) => {
-    const file =
-      event.target.files?.[0];
+  const handlePhoto =
+    (
+      event: React.ChangeEvent<HTMLInputElement>
+    ) => {
+      const file =
+        event.target.files?.[0];
 
-    if (!file) return;
+      if (!file) return;
 
-    setInputName(
-      file.name
-    );
-
-    if (photo) {
-      URL.revokeObjectURL(
-        photo
-      );
-    }
-
-    const preview =
-      URL.createObjectURL(
-        file
+      setInputName(
+        file.name
       );
 
-    setPhoto(
-      preview
-    );
+      if (photo) {
+        URL.revokeObjectURL(
+          photo
+        );
+      }
 
-    analyzeFile(
-      file,
-      "照片"
-    );
-  };
+      const preview =
+        URL.createObjectURL(
+          file
+        );
+
+      setPhoto(
+        preview
+      );
+
+      analyzeFile(
+        file,
+        "照片"
+      );
+    };
 
   const reset = () => {
     setResult(null);
@@ -884,38 +1059,112 @@ export default function Home() {
     setPhoto(null);
   };
 
-  const share = async () => {
-    if (!result) return;
+  const share =
+    async () => {
+      if (!result) return;
 
-    const text =
-      `PawTalk AI：${result.animal}｜${result.mood}｜置信度 ${result.confidence}%`;
+      const text =
+        `PawTalk AI：${result.animal}｜${result.mood}｜置信度 ${result.confidence}%`;
 
-    try {
-      if (
-        navigator.share
-      ) {
-        await navigator.share({
-          title:
-            "PawTalk AI V3",
-          text,
-        });
-      } else {
-        await navigator.clipboard.writeText(
-          text
-        );
-      }
-    } catch {}
-  };
-
-  const clearHistory =
-    () => {
-      setHistory([]);
-
-      localStorage.removeItem(
-        "pawtalk-history-v3"
-      );
+      try {
+        if (
+          navigator.share
+        ) {
+          await navigator.share(
+            {
+              title:
+                "PawTalk AI V3",
+              text,
+            }
+          );
+        } else {
+          await navigator.clipboard.writeText(
+            text
+          );
+        }
+      } catch {}
     };
 
+  const logout =
+    async () => {
+      await supabase.auth.signOut();
+
+      setSession(null);
+      setResult(null);
+      setHistory([]);
+    };
+
+  /*
+   * ============================
+   * 登录加载状态
+   * ============================
+   */
+  if (authLoading) {
+    return (
+      <main className="authPage">
+        <div className="loadingAuth">
+          <div className="brand authBrand">
+            <div className="brandMark">
+              <AudioLines
+                size={20}
+              />
+            </div>
+
+            <span>
+              PawTalk{" "}
+              <b>AI</b>
+            </span>
+
+            <em>V3</em>
+          </div>
+
+          <p>
+            正在检查登录状态...
+          </p>
+        </div>
+      </main>
+    );
+  }
+
+  /*
+   * ============================
+   * 未登录
+   * ============================
+   */
+  if (!session) {
+    return (
+      <main className="authPage">
+        <div className="authContainer">
+          <div className="brand authBrand">
+            <div className="brandMark">
+              <AudioLines
+                size={20}
+              />
+            </div>
+
+            <span>
+              PawTalk{" "}
+              <b>AI</b>
+            </span>
+
+            <em>V3</em>
+          </div>
+
+          <Auth
+            onSuccess={() => {
+              window.location.reload();
+            }}
+          />
+        </div>
+      </main>
+    );
+  }
+
+  /*
+   * ============================
+   * PawTalk 主界面
+   * ============================
+   */
   return (
     <main>
       <nav className="nav">
@@ -937,6 +1186,21 @@ export default function Home() {
 
           真实 AI 多模态分析
 
+          <span className="userEmail">
+            <User size={13} />
+
+            {session.user?.email}
+          </span>
+
+          <span className="credits">
+            免费剩余{" "}
+            {Math.max(
+              0,
+              5 - uses
+            )}{" "}
+            / 5
+          </span>
+
           <button
             className="proBtn"
             onClick={() =>
@@ -945,6 +1209,18 @@ export default function Home() {
           >
             <Crown size={13} />
             PRO
+          </button>
+
+          <button
+            className="logoutBtn"
+            onClick={
+              logout
+            }
+            title="退出登录"
+          >
+            <LogOut
+              size={15}
+            />
           </button>
         </div>
       </nav>
