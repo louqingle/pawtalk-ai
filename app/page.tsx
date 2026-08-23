@@ -55,34 +55,86 @@ const animals: {
 ];
 
 export default function Home() {
-  const [animal, setAnimal] = useState<Animal>("猫咪");
-  const [tab, setTab] = useState<Tab>("sound");
-  const [recording, setRecording] = useState(false);
-  const [seconds, setSeconds] = useState(0);
-  const [analyzing, setAnalyzing] = useState(false);
-  const [result, setResult] = useState<Result | null>(null);
-  const [history, setHistory] = useState<Result[]>([]);
-  const [photo, setPhoto] = useState<string | null>(null);
-  const [inputName, setInputName] = useState("");
-  const [error, setError] = useState("");
-  const [uses, setUses] = useState(0);
-  const [showPro, setShowPro] = useState(false);
+  const [animal, setAnimal] =
+    useState<Animal>("猫咪");
 
-  const mediaRecorder = useRef<MediaRecorder | null>(null);
-  const chunks = useRef<Blob[]>([]);
-  const timer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [tab, setTab] =
+    useState<Tab>("sound");
+
+  const [recording, setRecording] =
+    useState(false);
+
+  const [seconds, setSeconds] =
+    useState(0);
+
+  const [analyzing, setAnalyzing] =
+    useState(false);
+
+  const [result, setResult] =
+    useState<Result | null>(null);
+
+  const [history, setHistory] =
+    useState<Result[]>([]);
+
+  const [photo, setPhoto] =
+    useState<string | null>(null);
+
+  const [inputName, setInputName] =
+    useState("");
+
+  const [error, setError] =
+    useState("");
+
+  const [uses, setUses] =
+    useState(0);
+
+  const [showPro, setShowPro] =
+    useState(false);
+
+  const [volume, setVolume] =
+    useState(0);
+
+  const [isSilent, setIsSilent] =
+    useState(false);
+
+  const mediaRecorder =
+    useRef<MediaRecorder | null>(null);
+
+  const chunks =
+    useRef<Blob[]>([]);
+
+  const timer =
+    useRef<ReturnType<
+      typeof setInterval
+    > | null>(null);
+
+  const audioContextRef =
+    useRef<AudioContext | null>(null);
+
+  const analyserRef =
+    useRef<AnalyserNode | null>(null);
+
+  const animationRef =
+    useRef<number | null>(null);
+
+  const canvasRef =
+    useRef<HTMLCanvasElement | null>(null);
 
   useEffect(() => {
     try {
       setHistory(
         JSON.parse(
-          localStorage.getItem("pawtalk-history-v3") || "[]"
+          localStorage.getItem(
+            "pawtalk-history-v3"
+          ) || "[]"
         )
       );
 
       setUses(
         Number(
-          localStorage.getItem("pawtalk-uses-v3") || 0
+          localStorage.getItem(
+            "pawtalk-uses-v3"
+          ) || 0
         )
       );
     } catch {}
@@ -90,6 +142,16 @@ export default function Home() {
     return () => {
       if (timer.current) {
         clearInterval(timer.current);
+      }
+
+      if (animationRef.current) {
+        cancelAnimationFrame(
+          animationRef.current
+        );
+      }
+
+      if (audioContextRef.current) {
+        audioContextRef.current.close();
       }
     };
   }, []);
@@ -109,13 +171,14 @@ export default function Home() {
   }, [uses]);
 
   /*
-   * 提取浏览器端基础音频特征
+   * 浏览器端音频特征提取
    */
   const extractAudioFeatures = async (
     file: File
   ): Promise<Record<string, number> | null> => {
     try {
-      const arrayBuffer = await file.arrayBuffer();
+      const arrayBuffer =
+        await file.arrayBuffer();
 
       const AudioContextClass =
         window.AudioContext ||
@@ -133,11 +196,6 @@ export default function Home() {
           arrayBuffer
         );
 
-      if (audioBuffer.numberOfChannels === 0) {
-        await audioContext.close();
-        return null;
-      }
-
       const channelData =
         audioBuffer.getChannelData(0);
 
@@ -153,9 +211,11 @@ export default function Home() {
         i < channelData.length;
         i++
       ) {
-        const value = channelData[i];
+        const value =
+          channelData[i];
 
-        sumSquares += value * value;
+        sumSquares +=
+          value * value;
 
         const absolute =
           Math.abs(value);
@@ -185,9 +245,11 @@ export default function Home() {
           1
         );
 
-      const rms = Math.sqrt(
-        sumSquares / sampleCount
-      );
+      const rms =
+        Math.sqrt(
+          sumSquares /
+            sampleCount
+        );
 
       const zeroCrossingRate =
         zeroCrossings /
@@ -209,19 +271,23 @@ export default function Home() {
         i++
       ) {
         if (
-          Math.abs(channelData[i]) <
-          silenceThreshold
+          Math.abs(
+            channelData[i]
+          ) < silenceThreshold
         ) {
           silentSamples++;
         }
       }
 
       const silenceRatio =
-        silentSamples / sampleCount;
+        silentSamples /
+        sampleCount;
 
-      const result = {
+      const features = {
         duration: Number(
-          audioBuffer.duration.toFixed(2)
+          audioBuffer.duration.toFixed(
+            2
+          )
         ),
 
         rms: Number(
@@ -237,19 +303,24 @@ export default function Home() {
         ),
 
         zeroCrossingRate: Number(
-          zeroCrossingRate.toFixed(5)
+          zeroCrossingRate.toFixed(
+            5
+          )
         ),
 
-        estimatedFrequency: Number(
-          estimatedFrequency.toFixed(1)
-        ),
+        estimatedFrequency:
+          Number(
+            estimatedFrequency.toFixed(
+              1
+            )
+          ),
 
         sampleRate,
       };
 
       await audioContext.close();
 
-      return result;
+      return features;
     } catch (error) {
       console.warn(
         "Audio feature extraction failed:",
@@ -261,7 +332,7 @@ export default function Home() {
   };
 
   /*
-   * 上传文件并调用服务器 API
+   * 调用后端 DeepSeek
    */
   const analyzeFile = async (
     file: File,
@@ -283,10 +354,13 @@ export default function Home() {
 
       if (source === "声音") {
         audioFeatures =
-          await extractAudioFeatures(file);
+          await extractAudioFeatures(
+            file
+          );
       }
 
-      const fd = new FormData();
+      const fd =
+        new FormData();
 
       fd.append(
         "animal",
@@ -351,8 +425,10 @@ export default function Home() {
 
       setHistory(
         (items) =>
-          [newResult, ...items]
-            .slice(0, 12)
+          [
+            newResult,
+            ...items,
+          ].slice(0, 12)
       );
 
       setUses(
@@ -370,6 +446,230 @@ export default function Home() {
   };
 
   /*
+   * 实时绘制声音波形
+   */
+  const startVisualizer = (
+    stream: MediaStream
+  ) => {
+    try {
+      const AudioContextClass =
+        window.AudioContext ||
+        (window as any).webkitAudioContext;
+
+      if (!AudioContextClass) {
+        return;
+      }
+
+      const audioContext =
+        new AudioContextClass();
+
+      const analyser =
+        audioContext.createAnalyser();
+
+      analyser.fftSize = 256;
+      analyser.smoothingTimeConstant =
+        0.8;
+
+      const source =
+        audioContext.createMediaStreamSource(
+          stream
+        );
+
+      source.connect(
+        analyser
+      );
+
+      audioContextRef.current =
+        audioContext;
+
+      analyserRef.current =
+        analyser;
+
+      const data =
+        new Uint8Array(
+          analyser.fftSize
+        );
+
+      const draw =
+        () => {
+          const canvas =
+            canvasRef.current;
+
+          const currentAnalyser =
+            analyserRef.current;
+
+          if (
+            !canvas ||
+            !currentAnalyser
+          ) {
+            return;
+          }
+
+          const ctx =
+            canvas.getContext(
+              "2d"
+            );
+
+          if (!ctx) {
+            return;
+          }
+
+          currentAnalyser.getByteTimeDomainData(
+            data
+          );
+
+          let sum = 0;
+
+          for (
+            let i = 0;
+            i < data.length;
+            i++
+          ) {
+            const normalized =
+              (data[i] - 128) /
+              128;
+
+            sum +=
+              normalized *
+              normalized;
+          }
+
+          const rms =
+            Math.sqrt(
+              sum /
+                data.length
+            );
+
+          const currentVolume =
+            Math.min(
+              100,
+              Math.round(
+                rms * 320
+              )
+            );
+
+          setVolume(
+            currentVolume
+          );
+
+          setIsSilent(
+            currentVolume <
+              5
+          );
+
+          ctx.clearRect(
+            0,
+            0,
+            canvas.width,
+            canvas.height
+          );
+
+          ctx.beginPath();
+
+          const sliceWidth =
+            canvas.width /
+            data.length;
+
+          for (
+            let i = 0;
+            i < data.length;
+            i++
+          ) {
+            const x =
+              i *
+              sliceWidth;
+
+            const y =
+              (data[i] / 255) *
+              canvas.height;
+
+            if (i === 0) {
+              ctx.moveTo(
+                x,
+                y
+              );
+            } else {
+              ctx.lineTo(
+                x,
+                y
+              );
+            }
+          }
+
+          ctx.strokeStyle =
+            "rgba(255,255,255,0.9)";
+
+          ctx.lineWidth = 2;
+
+          ctx.stroke();
+
+          animationRef.current =
+            requestAnimationFrame(
+              draw
+            );
+        };
+
+      draw();
+    } catch (error) {
+      console.warn(
+        "Visualizer error:",
+        error
+      );
+    }
+  };
+
+  /*
+   * 停止声音可视化
+   */
+  const stopVisualizer =
+    () => {
+      if (
+        animationRef.current
+      ) {
+        cancelAnimationFrame(
+          animationRef.current
+        );
+
+        animationRef.current =
+          null;
+      }
+
+      if (
+        audioContextRef.current
+      ) {
+        audioContextRef.current.close();
+
+        audioContextRef.current =
+          null;
+      }
+
+      analyserRef.current =
+        null;
+
+      setVolume(0);
+      setIsSilent(false);
+
+      const canvas =
+        canvasRef.current;
+
+      if (canvas) {
+        const ctx =
+          canvas.getContext(
+            "2d"
+          );
+
+        if (ctx) {
+          ctx.clearRect(
+            0,
+            0,
+            canvas.width,
+            canvas.height
+          );
+        }
+      }
+    };
+
+  /*
    * 开始录音
    */
   const startRecording =
@@ -380,10 +680,16 @@ export default function Home() {
       }
 
       try {
+        setError("");
+
         const stream =
           await navigator.mediaDevices.getUserMedia(
             {
-              audio: true,
+              audio: {
+                echoCancellation: true,
+                noiseSuppression: true,
+                autoGainControl: true,
+              },
             }
           );
 
@@ -397,7 +703,8 @@ export default function Home() {
         recorder.ondataavailable =
           (event) => {
             if (
-              event.data.size > 0
+              event.data.size >
+              0
             ) {
               chunks.current.push(
                 event.data
@@ -405,47 +712,57 @@ export default function Home() {
             }
           };
 
-        recorder.onstop = () => {
-          stream
-            .getTracks()
-            .forEach(
-              (track) =>
-                track.stop()
-            );
+        recorder.onstop =
+          () => {
+            stream
+              .getTracks()
+              .forEach(
+                (track) =>
+                  track.stop()
+              );
 
-          const blob =
-            new Blob(
-              chunks.current,
-              {
-                type:
-                  recorder.mimeType ||
-                  "audio/webm",
-              }
-            );
+            stopVisualizer();
 
-          const file =
-            new File(
-              [blob],
-              "pet-recording.webm",
-              {
-                type:
-                  blob.type ||
-                  "audio/webm",
-              }
-            );
+            const blob =
+              new Blob(
+                chunks.current,
+                {
+                  type:
+                    recorder.mimeType ||
+                    "audio/webm",
+                }
+              );
 
-          analyzeFile(
-            file,
-            "声音"
-          );
-        };
+            const file =
+              new File(
+                [blob],
+                "pet-recording.webm",
+                {
+                  type:
+                    blob.type ||
+                    "audio/webm",
+                }
+              );
+
+            analyzeFile(
+              file,
+              "声音"
+            );
+          };
 
         mediaRecorder.current =
           recorder;
 
+        startVisualizer(
+          stream
+        );
+
         recorder.start();
 
-        setRecording(true);
+        setRecording(
+          true
+        );
+
         setSeconds(0);
 
         timer.current =
@@ -472,19 +789,25 @@ export default function Home() {
     () => {
       if (
         mediaRecorder.current
-          ?.state === "recording"
+          ?.state ===
+        "recording"
       ) {
         mediaRecorder.current.stop();
       }
 
-      setRecording(false);
+      setRecording(
+        false
+      );
 
-      if (timer.current) {
+      if (
+        timer.current
+      ) {
         clearInterval(
           timer.current
         );
 
-        timer.current = null;
+        timer.current =
+          null;
       }
     };
 
@@ -530,10 +853,13 @@ export default function Home() {
       );
     }
 
-    setPhoto(
+    const preview =
       URL.createObjectURL(
         file
-      )
+      );
+
+    setPhoto(
+      preview
     );
 
     analyzeFile(
@@ -545,8 +871,17 @@ export default function Home() {
   const reset = () => {
     setResult(null);
     setInputName("");
-    setPhoto(null);
     setError("");
+    setVolume(0);
+    setIsSilent(false);
+
+    if (photo) {
+      URL.revokeObjectURL(
+        photo
+      );
+    }
+
+    setPhoto(null);
   };
 
   const share = async () => {
@@ -590,7 +925,8 @@ export default function Home() {
           </div>
 
           <span>
-            PawTalk <b>AI</b>
+            PawTalk{" "}
+            <b>AI</b>
           </span>
 
           <em>V3</em>
@@ -621,7 +957,9 @@ export default function Home() {
 
         <h1>
           不是“翻译”，是
-          <span>理解线索。</span>
+          <span>
+            理解线索。
+          </span>
         </h1>
 
         <p>
@@ -718,7 +1056,9 @@ export default function Home() {
                   : ""
               }
               onClick={() =>
-                setTab("sound")
+                setTab(
+                  "sound"
+                )
               }
             >
               <Volume2 size={16} />
@@ -732,7 +1072,9 @@ export default function Home() {
                   : ""
               }
               onClick={() =>
-                setTab("photo")
+                setTab(
+                  "photo"
+                )
               }
             >
               <Camera size={16} />
@@ -740,7 +1082,8 @@ export default function Home() {
             </button>
           </div>
 
-          {tab === "sound" ? (
+          {tab ===
+          "sound" ? (
             <>
               <div
                 className={`recorder ${
@@ -790,19 +1133,107 @@ export default function Home() {
                       )}
                     </strong>
 
+                    <canvas
+                      ref={
+                        canvasRef
+                      }
+                      width={600}
+                      height={100}
+                      style={{
+                        width:
+                          "100%",
+                        height:
+                          "100px",
+                        marginTop:
+                          "16px",
+                        borderRadius:
+                          "14px",
+                        background:
+                          "rgba(255,255,255,0.04)",
+                      }}
+                    />
+
+                    <div
+                      style={{
+                        display:
+                          "flex",
+                        justifyContent:
+                          "space-between",
+                        alignItems:
+                          "center",
+                        width:
+                          "100%",
+                        marginTop:
+                          "10px",
+                        fontSize:
+                          "13px",
+                        opacity:
+                          0.75,
+                      }}
+                    >
+                      <span>
+                        {isSilent
+                          ? "等待声音…"
+                          : "正在检测声音"}
+                      </span>
+
+                      <span>
+                        音量{" "}
+                        <b>
+                          {volume}%
+                        </b>
+                      </span>
+                    </div>
+
+                    <div
+                      style={{
+                        width:
+                          "100%",
+                        height:
+                          "5px",
+                        background:
+                          "rgba(255,255,255,0.08)",
+                        borderRadius:
+                          "99px",
+                        overflow:
+                          "hidden",
+                        marginTop:
+                          "8px",
+                      }}
+                    >
+                      <div
+                        style={{
+                          width: `${volume}%`,
+                          height:
+                            "100%",
+                          background:
+                            "currentColor",
+                          borderRadius:
+                            "99px",
+                          transition:
+                            "width 80ms linear",
+                        }}
+                      />
+                    </div>
+
                     <div className="waves">
                       {Array.from(
                         {
                           length: 18,
                         }
                       ).map(
-                        (_, i) => (
+                        (
+                          _,
+                          index
+                        ) => (
                           <i
-                            key={i}
+                            key={
+                              index
+                            }
                             style={{
                               animationDelay:
                                 `${
-                                  i *
+                                  index *
                                   0.07
                                 }s`,
                             }}
@@ -817,6 +1248,10 @@ export default function Home() {
                         stopRecording
                       }
                     >
+                      <Square
+                        size={16}
+                        fill="currentColor"
+                      />
                       结束录音
                     </button>
                   </>
@@ -862,7 +1297,9 @@ export default function Home() {
               {!recording &&
                 !analyzing && (
                   <label className="upload">
-                    <Upload size={17} />
+                    <Upload
+                      size={17}
+                    />
 
                     <span>
                       {inputName ||
@@ -989,7 +1426,8 @@ export default function Home() {
                   </span>
 
                   <h2>
-                    {result.animal} · 分析完成
+                    {result.animal} ·
+                    分析完成
                   </h2>
 
                   <small className="source">
@@ -1001,7 +1439,10 @@ export default function Home() {
                 </div>
 
                 <div className="confidence">
-                  {result.confidence}%
+                  {
+                    result.confidence
+                  }
+                  %
 
                   <small>
                     置信度
@@ -1045,7 +1486,9 @@ export default function Home() {
               />
 
               <div className="detail">
-                <Sparkles size={17} />
+                <Sparkles
+                  size={17}
+                />
 
                 <div>
                   <b>
@@ -1070,16 +1513,24 @@ export default function Home() {
 
               <div className="actions">
                 <button
-                  onClick={reset}
+                  onClick={
+                    reset
+                  }
                 >
-                  <RotateCcw size={16} />
+                  <RotateCcw
+                    size={16}
+                  />
                   再分析
                 </button>
 
                 <button
-                  onClick={share}
+                  onClick={
+                    share
+                  }
                 >
-                  <Share2 size={16} />
+                  <Share2
+                    size={16}
+                  />
                   分享结果
                 </button>
               </div>
@@ -1120,7 +1571,9 @@ export default function Home() {
             {history.map(
               (item) => (
                 <button
-                  key={item.id}
+                  key={
+                    item.id
+                  }
                   className="historyItem"
                   onClick={() =>
                     setResult(
@@ -1130,7 +1583,9 @@ export default function Home() {
                 >
                   <span>
                     {item.animal} ·{" "}
-                    {item.source}
+                    {
+                      item.source
+                    }
                   </span>
 
                   <b>
@@ -1138,9 +1593,13 @@ export default function Home() {
                   </b>
 
                   <small>
-                    {item.confidence}%
-                    置信度 ·{" "}
-                    {item.createdAt}
+                    {
+                      item.confidence
+                    }
+                    % 置信度 ·{" "}
+                    {
+                      item.createdAt
+                    }
                   </small>
                 </button>
               )
@@ -1158,7 +1617,9 @@ export default function Home() {
         <div
           className="modal"
           onClick={() =>
-            setShowPro(false)
+            setShowPro(
+              false
+            )
           }
         >
           <div
@@ -1188,7 +1649,9 @@ export default function Home() {
             <button
               className="primary"
               onClick={() =>
-                setShowPro(false)
+                setShowPro(
+                  false
+                )
               }
             >
               先继续体验
