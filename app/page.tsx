@@ -71,8 +71,9 @@ const animals: {
   },
 ];
 
+const supabase = createClient();
+
 export default function Home() {
-  const supabase = createClient();
 
   const [session, setSession] =
     useState<any>(null);
@@ -223,7 +224,7 @@ export default function Home() {
       mounted = false;
       subscription.unsubscribe();
     };
-  }, [supabase]);
+  }, []);
 
   /*
    * ============================
