@@ -1,12 +1,6 @@
 "use client";
 
-import {
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
-
+import { useEffect, useRef, useState } from "react";
 import {
   AudioLines,
   Cat,
@@ -36,10 +30,8 @@ import {
 
 import Auth from "@/components/Auth";
 import { createClient } from "@/lib/supabase/client";
-import Avatar from "@/components/Avatar";
 
 type Animal = "猫咪" | "狗狗" | "鸟类" | "其他";
-
 type Tab = "sound" | "photo";
 
 type Result = {
@@ -80,16 +72,7 @@ const animals: {
 ];
 
 export default function Home() {
-  /*
-   * Supabase Client
-   *
-   * 使用 useMemo 保证整个页面生命周期
-   * 使用同一个 Supabase client。
-   */
-  const supabase = useMemo(
-    () => createClient(),
-    []
-  );
+  const supabase = createClient();
 
   const [session, setSession] =
     useState<any>(null);
@@ -175,47 +158,37 @@ export default function Home() {
    */
 
   useEffect(() => {
-    if (!session?.user) {
-      setAvatarUrl(null);
-      return;
-    }
-
-    setAvatarUrl(
-      session.user.user_metadata
-        ?.avatar_url || null
-    );
-  }, [session]);
-
-  useEffect(() => {
     let mounted = true;
 
     const loadSession = async () => {
       try {
         const {
           data: { session },
-          error,
-        } =
-          await supabase.auth.getSession();
+        } = await supabase.auth.getSession();
 
-        if (error) {
-          console.error(
-            "Supabase getSession failed:",
-            error
+        if (!mounted) return;
+
+        setSession(session);
+
+        if (session?.user) {
+          setAvatarUrl(
+            session.user.user_metadata
+              ?.avatar_url || null
           );
+        } else {
+          setAvatarUrl(null);
         }
 
-        if (mounted) {
-          setSession(session ?? null);
-          setAuthLoading(false);
-        }
+        setAuthLoading(false);
       } catch (error) {
         console.error(
-          "Supabase session check failed:",
+          "Supabase session error:",
           error
         );
 
         if (mounted) {
           setSession(null);
+          setAvatarUrl(null);
           setAuthLoading(false);
         }
       }
@@ -227,12 +200,20 @@ export default function Home() {
       data: { subscription },
     } =
       supabase.auth.onAuthStateChange(
-        (_event, newSession) => {
+        (_event, session) => {
           if (!mounted) return;
 
-          setSession(
-            newSession ?? null
-          );
+          setSession(session);
+
+          if (session?.user) {
+            setAvatarUrl(
+              session.user.user_metadata
+                ?.avatar_url || null
+            );
+          } else {
+            setAvatarUrl(null);
+            setShowAccount(false);
+          }
 
           setAuthLoading(false);
         }
@@ -246,7 +227,7 @@ export default function Home() {
 
   /*
    * ============================
-   * 本地历史记录
+   * 本地历史
    * ============================
    */
 
@@ -259,16 +240,16 @@ export default function Home() {
           "pawtalk-history-v3"
         );
 
-      setHistory(
-        saved ? JSON.parse(saved) : []
-      );
+      if (saved) {
+        setHistory(
+          JSON.parse(saved)
+        );
+      }
     } catch (error) {
       console.warn(
-        "Failed to load history:",
+        "读取历史失败:",
         error
       );
-
-      setHistory([]);
     }
   }, [session]);
 
@@ -282,7 +263,7 @@ export default function Home() {
       );
     } catch (error) {
       console.warn(
-        "Failed to save history:",
+        "保存历史失败:",
         error
       );
     }
@@ -290,7 +271,7 @@ export default function Home() {
 
   /*
    * ============================
-   * 页面卸载清理
+   * 页面清理
    * ============================
    */
 
@@ -309,30 +290,27 @@ export default function Home() {
       if (audioContextRef.current) {
         audioContextRef.current.close();
       }
-
-      if (photo) {
-        URL.revokeObjectURL(photo);
-      }
     };
-  }, [photo]);
+  }, []);
 
   /*
    * ============================
-   * 获取服务端额度
+   * 读取服务器额度
    * ============================
    */
 
   const loadCredits = async () => {
     try {
       const response =
-        await fetch("/api/credits", {
-          method: "GET",
-          cache: "no-store",
-        });
+        await fetch(
+          "/api/credits",
+          {
+            method: "GET",
+            cache: "no-store",
+          }
+        );
 
-      if (!response.ok) {
-        return;
-      }
+      if (!response.ok) return;
 
       const data =
         await response.json();
@@ -355,7 +333,7 @@ export default function Home() {
       }
     } catch (error) {
       console.warn(
-        "Failed to load credits:",
+        "读取额度失败:",
         error
       );
     }
@@ -369,7 +347,58 @@ export default function Home() {
 
   /*
    * ============================
-   * 浏览器端音频特征提取
+   * 退出登录
+   * ============================
+   */
+
+  const logout = async () => {
+    try {
+      setShowAccount(false);
+
+      const {
+        error,
+      } =
+        await supabase.auth.signOut();
+
+      if (error) {
+        console.error(
+          "退出登录失败:",
+          error
+        );
+
+        setError(
+          "退出登录失败，请重试。"
+        );
+
+        return;
+      }
+
+      /*
+       * 立即清理本地状态
+       */
+      setSession(null);
+      setAvatarUrl(null);
+      setResult(null);
+      setHistory([]);
+      setPhoto(null);
+      setInputName("");
+      setUses(0);
+      setShowPro(false);
+    } catch (error) {
+      console.error(
+        "Logout error:",
+        error
+      );
+
+      setError(
+        "退出登录失败，请重试。"
+      );
+    }
+  };
+
+  /*
+   * ============================
+   * 音频特征
    * ============================
    */
 
@@ -385,9 +414,8 @@ export default function Home() {
 
         const AudioContextClass =
           window.AudioContext ||
-          (
-            window as any
-          ).webkitAudioContext;
+          (window as any)
+            .webkitAudioContext;
 
         if (!AudioContextClass) {
           return null;
@@ -402,7 +430,9 @@ export default function Home() {
           );
 
         const channelData =
-          audioBuffer.getChannelData(0);
+          audioBuffer.getChannelData(
+            0
+          );
 
         const sampleRate =
           audioBuffer.sampleRate;
@@ -422,16 +452,16 @@ export default function Home() {
           sumSquares +=
             value * value;
 
-          const absolute =
-            Math.abs(value);
-
-          if (absolute > peak) {
-            peak = absolute;
-          }
+          peak = Math.max(
+            peak,
+            Math.abs(value)
+          );
 
           if (i > 0) {
             const previous =
-              channelData[i - 1];
+              channelData[
+                i - 1
+              ];
 
             if (
               (previous >= 0 &&
@@ -465,9 +495,6 @@ export default function Home() {
             sampleRate) /
           2;
 
-        const silenceThreshold =
-          0.01;
-
         let silentSamples = 0;
 
         for (
@@ -478,8 +505,7 @@ export default function Home() {
           if (
             Math.abs(
               channelData[i]
-            ) <
-            silenceThreshold
+            ) < 0.01
           ) {
             silentSamples++;
           }
@@ -495,33 +521,27 @@ export default function Home() {
               2
             )
           ),
-
           rms: Number(
             rms.toFixed(5)
           ),
-
           peak: Number(
             peak.toFixed(5)
           ),
-
           silenceRatio: Number(
             silenceRatio.toFixed(3)
           ),
-
           zeroCrossingRate:
             Number(
               zeroCrossingRate.toFixed(
                 5
               )
             ),
-
           estimatedFrequency:
             Number(
               estimatedFrequency.toFixed(
                 1
               )
             ),
-
           sampleRate,
         };
 
@@ -540,13 +560,15 @@ export default function Home() {
 
   /*
    * ============================
-   * 调用后端 AI
+   * AI 分析
    * ============================
    */
 
   const analyzeFile = async (
     file: File,
-    source: "声音" | "照片"
+    source:
+      | "声音"
+      | "照片"
   ) => {
     if (!session) {
       setError(
@@ -617,9 +639,11 @@ export default function Home() {
 
       if (!response.ok) {
         if (
-          response.status === 401
+          response.status ===
+          401
         ) {
           setSession(null);
+          setAvatarUrl(null);
 
           throw new Error(
             "登录状态已失效，请重新登录。"
@@ -627,7 +651,8 @@ export default function Home() {
         }
 
         if (
-          response.status === 402
+          response.status ===
+          402
         ) {
           setUses(5);
           setShowPro(true);
@@ -658,13 +683,16 @@ export default function Home() {
           source,
         };
 
-      setResult(newResult);
+      setResult(
+        newResult
+      );
 
-      setHistory((items) =>
-        [
-          newResult,
-          ...items,
-        ].slice(0, 12)
+      setHistory(
+        (items) =>
+          [
+            newResult,
+            ...items,
+          ].slice(0, 12)
       );
 
       await loadCredits();
@@ -680,7 +708,7 @@ export default function Home() {
 
   /*
    * ============================
-   * 实时声音可视化
+   * 实时可视化
    * ============================
    */
 
@@ -690,9 +718,8 @@ export default function Home() {
     try {
       const AudioContextClass =
         window.AudioContext ||
-        (
-          window as any
-        ).webkitAudioContext;
+        (window as any)
+          .webkitAudioContext;
 
       if (!AudioContextClass) {
         return;
@@ -713,7 +740,9 @@ export default function Home() {
           stream
         );
 
-      source.connect(analyser);
+      source.connect(
+        analyser
+      );
 
       audioContextRef.current =
         audioContext;
@@ -745,9 +774,7 @@ export default function Home() {
             "2d"
           );
 
-        if (!ctx) {
-          return;
-        }
+        if (!ctx) return;
 
         currentAnalyser.getByteTimeDomainData(
           data
@@ -810,16 +837,23 @@ export default function Home() {
           i++
         ) {
           const x =
-            i * sliceWidth;
+            i *
+            sliceWidth;
 
           const y =
             (data[i] / 255) *
             canvas.height;
 
           if (i === 0) {
-            ctx.moveTo(x, y);
+            ctx.moveTo(
+              x,
+              y
+            );
           } else {
-            ctx.lineTo(x, y);
+            ctx.lineTo(
+              x,
+              y
+            );
           }
         }
 
@@ -845,54 +879,53 @@ export default function Home() {
     }
   };
 
-  /*
-   * ============================
-   * 停止可视化
-   * ============================
-   */
-
-  const stopVisualizer = () => {
-    if (animationRef.current) {
-      cancelAnimationFrame(
+  const stopVisualizer =
+    () => {
+      if (
         animationRef.current
-      );
-
-      animationRef.current =
-        null;
-    }
-
-    if (
-      audioContextRef.current
-    ) {
-      audioContextRef.current.close();
-
-      audioContextRef.current =
-        null;
-    }
-
-    analyserRef.current =
-      null;
-
-    setVolume(0);
-    setIsSilent(false);
-
-    const canvas =
-      canvasRef.current;
-
-    if (canvas) {
-      const ctx =
-        canvas.getContext("2d");
-
-      if (ctx) {
-        ctx.clearRect(
-          0,
-          0,
-          canvas.width,
-          canvas.height
+      ) {
+        cancelAnimationFrame(
+          animationRef.current
         );
+
+        animationRef.current =
+          null;
       }
-    }
-  };
+
+      if (
+        audioContextRef.current
+      ) {
+        audioContextRef.current.close();
+
+        audioContextRef.current =
+          null;
+      }
+
+      analyserRef.current =
+        null;
+
+      setVolume(0);
+      setIsSilent(false);
+
+      const canvas =
+        canvasRef.current;
+
+      if (canvas) {
+        const ctx =
+          canvas.getContext(
+            "2d"
+          );
+
+        if (ctx) {
+          ctx.clearRect(
+            0,
+            0,
+            canvas.width,
+            canvas.height
+          );
+        }
+      }
+    };
 
   /*
    * ============================
@@ -994,7 +1027,10 @@ export default function Home() {
 
         recorder.start();
 
-        setRecording(true);
+        setRecording(
+          true
+        );
+
         setSeconds(0);
 
         timer.current =
@@ -1009,7 +1045,6 @@ export default function Home() {
           );
       } catch (error) {
         console.error(
-          "Microphone error:",
           error
         );
 
@@ -1025,25 +1060,31 @@ export default function Home() {
    * ============================
    */
 
-  const stopRecording = () => {
-    if (
-      mediaRecorder.current
-        ?.state ===
-      "recording"
-    ) {
-      mediaRecorder.current.stop();
-    }
+  const stopRecording =
+    () => {
+      if (
+        mediaRecorder.current
+          ?.state ===
+        "recording"
+      ) {
+        mediaRecorder.current.stop();
+      }
 
-    setRecording(false);
-
-    if (timer.current) {
-      clearInterval(
-        timer.current
+      setRecording(
+        false
       );
 
-      timer.current = null;
-    }
-  };
+      if (
+        timer.current
+      ) {
+        clearInterval(
+          timer.current
+        );
+
+        timer.current =
+          null;
+      }
+    };
 
   /*
    * ============================
@@ -1098,7 +1139,9 @@ export default function Home() {
         file
       );
 
-    setPhoto(preview);
+    setPhoto(
+      preview
+    );
 
     analyzeFile(
       file,
@@ -1112,24 +1155,24 @@ export default function Home() {
    * ============================
    */
 
-  const clearHistory = () => {
-    setHistory([]);
+  const clearHistory =
+    () => {
+      setHistory([]);
 
-    try {
-      localStorage.removeItem(
-        "pawtalk-history-v3"
-      );
-    } catch (error) {
-      console.warn(
-        "Failed to clear history:",
-        error
-      );
-    }
-  };
+      try {
+        localStorage.removeItem(
+          "pawtalk-history-v3"
+        );
+      } catch (error) {
+        console.warn(
+          error
+        );
+      }
+    };
 
   /*
    * ============================
-   * 重置分析
+   * 重置
    * ============================
    */
 
@@ -1178,50 +1221,7 @@ export default function Home() {
 
   /*
    * ============================
-   * 退出登录
-   * ============================
-   */
-
-  const logout = async () => {
-    try {
-      const { error } =
-        await supabase.auth.signOut();
-
-      if (error) {
-        console.error(
-          "Sign out failed:",
-          error
-        );
-
-        setError(
-          "退出登录失败，请重试。"
-        );
-
-        return;
-      }
-
-      setSession(null);
-      setResult(null);
-      setHistory([]);
-      setShowAccount(false);
-      setAvatarUrl(null);
-      setUses(0);
-      setError("");
-    } catch (error) {
-      console.error(
-        "Logout error:",
-        error
-      );
-
-      setError(
-        "退出登录失败，请重试。"
-      );
-    }
-  };
-
-  /*
-   * ============================
-   * 登录加载状态
+   * 登录检查
    * ============================
    */
 
@@ -1279,7 +1279,11 @@ export default function Home() {
 
           <Auth
             onSuccess={() => {
-              window.location.reload();
+              /*
+               * 不再依赖 reload。
+               * Supabase onAuthStateChange
+               * 会自动更新 session。
+               */
             }}
           />
         </div>
@@ -1289,7 +1293,7 @@ export default function Home() {
 
   /*
    * ============================
-   * PawTalk 主界面
+   * 主界面
    * ============================
    */
 
@@ -1310,131 +1314,112 @@ export default function Home() {
           PRO
         </button>
 
-        {session && (
-          <div className="accountArea">
-            <Avatar
-              userId={session.user.id}
-              email={session.user.email}
-              avatarUrl={avatarUrl}
-              onUploaded={(url) => {
-                setAvatarUrl(url);
+        {/* ======================
+            用户账户
+           ====================== */}
 
-                setSession({
-                  ...session,
-                  user: {
-                    ...session.user,
-                    user_metadata: {
-                      ...session.user
-                        .user_metadata,
-                      avatar_url: url,
-                    },
-                  },
-                });
-              }}
+        <div className="account">
+          <button
+            className="accountButton"
+            onClick={() =>
+              setShowAccount(
+                (value) =>
+                  !value
+              )
+            }
+            title={
+              session.user.email ||
+              "我的账户"
+            }
+          >
+            <div className="avatar">
+              {avatarUrl ? (
+                <img
+                  src={avatarUrl}
+                  alt="用户头像"
+                  onError={() =>
+                    setAvatarUrl(
+                      null
+                    )
+                  }
+                />
+              ) : (
+                <User size={18} />
+              )}
+            </div>
+
+            <span className="accountName">
+              {session.user
+                .user_metadata
+                ?.full_name ||
+                session.user.email?.split(
+                  "@"
+                )[0] ||
+                "我的账户"}
+            </span>
+
+            <ChevronRight
+              size={15}
+              className={
+                showAccount
+                  ? "rotate"
+                  : ""
+              }
             />
-          </div>
-        )}
+          </button>
 
-        {session && (
-          <div className="account">
-            <button
-              type="button"
-              className="accountButton"
-              onClick={() =>
-                setShowAccount(
-                  (value) => !value
-                )
-              }
-              title={
-                session.user.email ||
-                "我的账户"
-              }
-            >
-              <div className="avatar">
-                {session.user
-                  .user_metadata
-                  ?.avatar_url ? (
-                  <img
-                    src={
-                      session.user
-                        .user_metadata
-                        .avatar_url
-                    }
-                    alt="头像"
-                  />
-                ) : (
-                  <User size={18} />
-                )}
-              </div>
-
-              <span className="accountName">
-                {session.user
-                  .user_metadata
-                  ?.full_name ||
-                  session.user.email?.split(
-                    "@"
-                  )[0] ||
-                  "我的账户"}
-              </span>
-
-              <ChevronRight
-                size={15}
-                className={
-                  showAccount
-                    ? "rotate"
-                    : ""
-                }
-              />
-            </button>
-
-            {showAccount && (
-              <div className="accountMenu">
-                <div className="accountInfo">
-                  <div className="avatar large">
-                    {session.user
-                      .user_metadata
-                      ?.avatar_url ? (
-                      <img
-                        src={
-                          session.user
-                            .user_metadata
-                            .avatar_url
-                        }
-                        alt="头像"
-                      />
-                    ) : (
-                      <User size={22} />
-                    )}
-                  </div>
-
-                  <div>
-                    <strong>
-                      {session.user
-                        .user_metadata
-                        ?.full_name ||
-                        "PawTalk 用户"}
-                    </strong>
-
-                    <small>
-                      {session.user.email}
-                    </small>
-                  </div>
+          {showAccount && (
+            <div className="accountMenu">
+              <div className="accountInfo">
+                <div className="avatar large">
+                  {avatarUrl ? (
+                    <img
+                      src={
+                        avatarUrl
+                      }
+                      alt="用户头像"
+                      onError={() =>
+                        setAvatarUrl(
+                          null
+                        )
+                      }
+                    />
+                  ) : (
+                    <User size={22} />
+                  )}
                 </div>
 
-                <div className="accountDivider" />
+                <div>
+                  <strong>
+                    {session.user
+                      .user_metadata
+                      ?.full_name ||
+                      "PawTalk 用户"}
+                  </strong>
 
-                <button
-                  type="button"
-                  className="logoutButton"
-                  onClick={logout}
-                >
-                  <LogOut size={16} />
-                  退出登录
-                </button>
+                  <small>
+                    {
+                      session.user
+                        .email
+                    }
+                  </small>
+                </div>
               </div>
-            )}
-          </div>
-        )}
+
+              <div className="accountDivider" />
+
+              <button
+                className="logoutButton"
+                onClick={
+                  logout
+                }
+              >
+                <LogOut size={16} />
+                退出登录
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
       <section className="hero">
@@ -1504,7 +1489,6 @@ export default function Home() {
             {animals.map(
               (item) => (
                 <button
-                  type="button"
                   key={
                     item.name
                   }
@@ -1539,14 +1523,15 @@ export default function Home() {
 
           <div className="tabs">
             <button
-              type="button"
               className={
                 tab === "sound"
                   ? "active"
                   : ""
               }
               onClick={() =>
-                setTab("sound")
+                setTab(
+                  "sound"
+                )
               }
             >
               <Volume2 size={16} />
@@ -1554,14 +1539,15 @@ export default function Home() {
             </button>
 
             <button
-              type="button"
               className={
                 tab === "photo"
                   ? "active"
                   : ""
               }
               onClick={() =>
-                setTab("photo")
+                setTab(
+                  "photo"
+                )
               }
             >
               <Camera size={16} />
@@ -1729,7 +1715,6 @@ export default function Home() {
                     </div>
 
                     <button
-                      type="button"
                       className="primary stop"
                       onClick={
                         stopRecording
@@ -1769,7 +1754,6 @@ export default function Home() {
                     </p>
 
                     <button
-                      type="button"
                       className="primary"
                       onClick={
                         startRecording
@@ -2001,7 +1985,6 @@ export default function Home() {
 
               <div className="actions">
                 <button
-                  type="button"
                   onClick={
                     reset
                   }
@@ -2013,7 +1996,6 @@ export default function Home() {
                 </button>
 
                 <button
-                  type="button"
                   onClick={
                     share
                   }
@@ -2039,7 +2021,6 @@ export default function Home() {
           {history.length >
             0 && (
             <button
-              type="button"
               onClick={
                 clearHistory
               }
@@ -2062,7 +2043,6 @@ export default function Home() {
             {history.map(
               (item) => (
                 <button
-                  type="button"
                   key={
                     item.id
                   }
@@ -2137,10 +2117,11 @@ export default function Home() {
             </div>
 
             <button
-              type="button"
               className="primary"
               onClick={() =>
-                setShowPro(false)
+                setShowPro(
+                  false
+                )
               }
             >
               先继续体验
