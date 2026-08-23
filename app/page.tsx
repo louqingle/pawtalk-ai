@@ -1,34 +1,1231 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { AudioLines, Cat, Dog, Bird, CircleHelp, Mic, Square, Upload, RotateCcw, Share2, History, Sparkles, ShieldCheck, Camera, Trash2, ChevronRight, Activity, Image as ImageIcon, Zap, Volume2, Crown, LockKeyhole } from "lucide-react";
+import {
+  AudioLines,
+  Cat,
+  Dog,
+  Bird,
+  CircleHelp,
+  Mic,
+  Square,
+  Upload,
+  RotateCcw,
+  Share2,
+  History,
+  Sparkles,
+  ShieldCheck,
+  Camera,
+  Trash2,
+  ChevronRight,
+  Activity,
+  Image as ImageIcon,
+  Zap,
+  Volume2,
+  Crown,
+  LockKeyhole,
+} from "lucide-react";
 
 type Animal = "猫咪" | "狗狗" | "鸟类" | "其他";
 type Tab = "sound" | "photo";
-type Result = { id:string; animal:Animal; phrase:string; mood:string; attention:number; tension:number; excitement:number; confidence:number; detail:string; nextTip:string; createdAt:string; source:"声音"|"照片" };
-const animals:{name:Animal;icon:React.ReactNode}[]=[{name:"猫咪",icon:<Cat size={22}/>},{name:"狗狗",icon:<Dog size={22}/>},{name:"鸟类",icon:<Bird size={22}/>},{name:"其他",icon:<CircleHelp size={22}/>}];
 
-export default function Home(){
- const [animal,setAnimal]=useState<Animal>("猫咪"),[tab,setTab]=useState<Tab>("sound"),[recording,setRecording]=useState(false),[seconds,setSeconds]=useState(0),[analyzing,setAnalyzing]=useState(false),[result,setResult]=useState<Result|null>(null),[history,setHistory]=useState<Result[]>([]),[photo,setPhoto]=useState<string|null>(null),[inputName,setInputName]=useState(""),[error,setError]=useState(""),[uses,setUses]=useState(0),[showPro,setShowPro]=useState(false);
- const mediaRecorder=useRef<MediaRecorder|null>(null),chunks=useRef<Blob[]>([]),timer=useRef<ReturnType<typeof setInterval>|null>(null);
- useEffect(()=>{try{setHistory(JSON.parse(localStorage.getItem("pawtalk-history-v3")||"[]"));setUses(Number(localStorage.getItem("pawtalk-uses-v3")||0))}catch{} return()=>{if(timer.current)clearInterval(timer.current)}},[]);
- useEffect(()=>{localStorage.setItem("pawtalk-history-v3",JSON.stringify(history))},[history]);
- useEffect(()=>{localStorage.setItem("pawtalk-uses-v3",String(uses))},[uses]);
- const analyzeFile=async(file:File,source:"声音"|"照片")=>{if(uses>=5){setShowPro(true);return} setError("");setAnalyzing(true);setResult(null);try{const fd=new FormData();fd.append("animal",animal);fd.append("source",source);fd.append("file",file);const r=await fetch("/api/analyze",{method:"POST",body:fd});const data=await r.json();if(!r.ok)throw new Error(data.error||"分析失败");const x:Result={...data,id:crypto.randomUUID(),createdAt:new Date().toLocaleTimeString("zh-CN",{hour:"2-digit",minute:"2-digit"}),source};setResult(x);setHistory(h=>[x,...h].slice(0,12));setUses(u=>u+1)}catch(e:any){setError(e.message||"分析失败，请重试")}finally{setAnalyzing(false)}};
- const startRecording=async()=>{if(uses>=5){setShowPro(true);return}try{const stream=await navigator.mediaDevices.getUserMedia({audio:true});const recorder=new MediaRecorder(stream);chunks.current=[];recorder.ondataavailable=e=>e.data.size&&chunks.current.push(e.data);recorder.onstop=()=>{stream.getTracks().forEach(t=>t.stop());const blob=new Blob(chunks.current,{type:recorder.mimeType||"audio/webm"});analyzeFile(new File([blob],"pet-recording.webm",{type:blob.type}),"声音")};mediaRecorder.current=recorder;recorder.start();setRecording(true);setSeconds(0);timer.current=setInterval(()=>setSeconds(s=>s+1),1000)}catch{setError("无法访问麦克风，请允许浏览器使用麦克风。")}};
- const stopRecording=()=>{mediaRecorder.current?.stop();setRecording(false);if(timer.current)clearInterval(timer.current)};
- const handleAudio=(e:React.ChangeEvent<HTMLInputElement>)=>{const f=e.target.files?.[0];if(f){setInputName(f.name);analyzeFile(f,"声音")}};
- const handlePhoto=(e:React.ChangeEvent<HTMLInputElement>)=>{const f=e.target.files?.[0];if(!f)return;setInputName(f.name);setPhoto(URL.createObjectURL(f));analyzeFile(f,"照片")};
- const reset=()=>{setResult(null);setInputName("");setPhoto(null);setError("")};
- const share=async()=>{if(!result)return;const text=`PawTalk AI：${result.animal}｜${result.mood}｜置信度 ${result.confidence}%`;try{if(navigator.share)await navigator.share({title:"PawTalk AI V3",text});else await navigator.clipboard.writeText(text)}catch{}};
- const clearHistory=()=>{setHistory([]);localStorage.removeItem("pawtalk-history-v3")};
- return <main><nav className="nav"><div className="brand"><div className="brandMark"><AudioLines size={20}/></div><span>PawTalk <b>AI</b></span><em>V3</em></div><div className="navRight"><span className="statusDot"/> 真实 AI 多模态分析 <button className="proBtn" onClick={()=>setShowPro(true)}><Crown size={13}/> PRO</button></div></nav>
- <section className="hero"><div className="pill"><Sparkles size={14}/> V3 · REAL AI MULTIMODAL</div><h1>不是“翻译”，是<span>理解线索。</span></h1><p>上传宠物声音或照片，让 AI 从可观察的声音、姿态、表情和环境线索推测它当前可能的情绪与互动需求。</p><div className="heroStats"><span><Zap size={14}/> 真实 AI</span><span><Camera size={14}/> 图像理解</span><span><Activity size={14}/> 行为指标</span><span><LockKeyhole size={14}/> 密钥不进前端</span></div></section>
- <section className="workspace"><div className="card"><div className="cardHead"><div><h2>① 选择宠物</h2><p>免费剩余 {Math.max(0,5-uses)} / 5 次</p></div><ShieldCheck size={19}/></div><div className="animals">{animals.map(a=><button key={a.name} className={`animal ${animal===a.name?"active":""}`} onClick={()=>setAnimal(a.name)}>{a.icon}<span>{a.name}</span>{animal===a.name&&<ChevronRight size={16}/>}</button>)}</div><div className="tabs"><button className={tab==="sound"?"active":""} onClick={()=>setTab("sound")}><Volume2 size={16}/>声音分析</button><button className={tab==="photo"?"active":""} onClick={()=>setTab("photo")}><Camera size={16}/>照片分析</button></div>
- {tab==="sound"?<><div className={`recorder ${recording?"recording":""} ${analyzing?"analyzing":""}`}><div className="orb">{analyzing?<Sparkles size={34}/>:recording?<Square size={28} fill="currentColor"/>:<Mic size={34}/>}</div>{recording?<><strong>正在聆听 · {String(Math.floor(seconds/60)).padStart(2,"0")}:{String(seconds%60).padStart(2,"0")}</strong><div className="waves">{Array.from({length:18}).map((_,i)=><i key={i} style={{animationDelay:`${i*.07}s`}}/>)}</div><button className="primary stop" onClick={stopRecording}>结束录音</button></>:analyzing?<><strong>AI 正在分析…</strong><p>提取可用信号并生成行为推测</p><div className="loader"><span/><span/><span/></div></>:<><strong>录一段它的声音</strong><p>建议 3–15 秒，环境尽量安静</p><button className="primary" onClick={startRecording}><Mic size={18}/> 开始录音</button></>}</div>{!recording&&!analyzing&&<label className="upload"><Upload size={17}/><span>{inputName||"上传已有宠物录音"}</span><input type="file" accept="audio/*" onChange={handleAudio}/></label>}</>:<><div className="photoBox">{photo?<img src={photo} alt="宠物预览"/>:<div className="photoEmpty"><ImageIcon size={38}/><strong>上传一张宠物照片</strong><p>AI 观察姿态、表情和环境线索</p></div>}{analyzing&&<div className="scan"><Sparkles size={20}/> AI 正在观察</div>}</div>{!analyzing&&<label className="upload"><Camera size={17}/><span>{inputName||"选择照片"}</span><input type="file" accept="image/*" onChange={handlePhoto}/></label>}</>}
- {error&&<div className="error">{error}</div>}<p className="disclaimer"><ShieldCheck size={14}/> 行为推测不是医学诊断，也不能证明动物“真的说了这句话”。</p></div>
- <div className="card resultCard">{!result?<div className="empty"><div className="emptyIcon"><AudioLines size={31}/></div><h2>{error?"分析没有完成":"等待 AI 分析"}</h2><p>{error?"检查 API 配置或稍后重试。":"上传声音或照片，V3 会调用服务器端 AI 生成报告。"}</p><div className="miniFeatures"><span>情绪概率</span><span>行为推测</span><span>下一步建议</span></div></div>:<><div className="resultTop"><div><span className="eyebrow">V3 · AI ANALYSIS COMPLETE</span><h2>{result.animal} · 分析完成</h2><small className="source">来自 {result.source} · {result.createdAt}</small></div><div className="confidence">{result.confidence}%<small>置信度</small></div></div><div className="quote">{result.phrase}</div><div className="mood"><span>当前状态</span><strong>{result.mood}</strong></div><Metric label="互动需求" value={result.attention}/><Metric label="紧张程度" value={result.tension}/><Metric label="兴奋程度" value={result.excitement}/><div className="detail"><Sparkles size={17}/><div><b>AI 观察</b><p>{result.detail}</p></div></div><div className="nextTip"><b>下一步建议</b><span>{result.nextTip}</span></div><div className="actions"><button onClick={reset}><RotateCcw size={16}/> 再分析</button><button onClick={share}><Share2 size={16}/> 分享结果</button></div></>}</div></section>
- <section className="history"><div className="sectionTitle"><h2><History size={19}/> 最近分析</h2>{history.length>0&&<button onClick={clearHistory}><Trash2 size={14}/> 清空</button>}</div>{history.length===0?<div className="historyEmpty">完成第一次分析后会自动保存在本机。</div>:<div className="historyGrid">{history.map(h=><button key={h.id} className="historyItem" onClick={()=>setResult(h)}><span>{h.animal} · {h.source}</span><b>{h.mood}</b><small>{h.confidence}% 置信度 · {h.createdAt}</small></button>)}</div>}</section><footer>© 2026 PawTalk AI V3 · 真实 AI 分析需要配置服务器端 API Key。</footer>
- {showPro&&<div className="modal" onClick={()=>setShowPro(false)}><div className="modalCard" onClick={e=>e.stopPropagation()}><Crown size={30}/><h2>PawTalk PRO</h2><p>V3 已预留会员体系：无限分析、历史云同步、高级报告与更多宠物模型。</p><div className="price">$4.99 <small>/ 月</small></div><button className="primary" onClick={()=>setShowPro(false)}>先继续体验</button></div></div>}</main>;
+type Result = {
+  id: string;
+  animal: Animal;
+  phrase: string;
+  mood: string;
+  attention: number;
+  tension: number;
+  excitement: number;
+  confidence: number;
+  detail: string;
+  nextTip: string;
+  createdAt: string;
+  source: "声音" | "照片";
+};
+
+const animals: {
+  name: Animal;
+  icon: React.ReactNode;
+}[] = [
+  { name: "猫咪", icon: <Cat size={22} /> },
+  { name: "狗狗", icon: <Dog size={22} /> },
+  { name: "鸟类", icon: <Bird size={22} /> },
+  { name: "其他", icon: <CircleHelp size={22} /> },
+];
+
+export default function Home() {
+  const [animal, setAnimal] = useState<Animal>("猫咪");
+  const [tab, setTab] = useState<Tab>("sound");
+  const [recording, setRecording] = useState(false);
+  const [seconds, setSeconds] = useState(0);
+  const [analyzing, setAnalyzing] = useState(false);
+  const [result, setResult] = useState<Result | null>(null);
+  const [history, setHistory] = useState<Result[]>([]);
+  const [photo, setPhoto] = useState<string | null>(null);
+  const [inputName, setInputName] = useState("");
+  const [error, setError] = useState("");
+  const [uses, setUses] = useState(0);
+  const [showPro, setShowPro] = useState(false);
+
+  const mediaRecorder = useRef<MediaRecorder | null>(null);
+  const chunks = useRef<Blob[]>([]);
+  const timer = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    try {
+      setHistory(
+        JSON.parse(
+          localStorage.getItem("pawtalk-history-v3") || "[]"
+        )
+      );
+
+      setUses(
+        Number(
+          localStorage.getItem("pawtalk-uses-v3") || 0
+        )
+      );
+    } catch {}
+
+    return () => {
+      if (timer.current) {
+        clearInterval(timer.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem(
+      "pawtalk-history-v3",
+      JSON.stringify(history)
+    );
+  }, [history]);
+
+  useEffect(() => {
+    localStorage.setItem(
+      "pawtalk-uses-v3",
+      String(uses)
+    );
+  }, [uses]);
+
+  /*
+   * 提取浏览器端基础音频特征
+   */
+  const extractAudioFeatures = async (
+    file: File
+  ): Promise<Record<string, number> | null> => {
+    try {
+      const arrayBuffer = await file.arrayBuffer();
+
+      const AudioContextClass =
+        window.AudioContext ||
+        (window as any).webkitAudioContext;
+
+      if (!AudioContextClass) {
+        return null;
+      }
+
+      const audioContext =
+        new AudioContextClass();
+
+      const audioBuffer =
+        await audioContext.decodeAudioData(
+          arrayBuffer
+        );
+
+      if (audioBuffer.numberOfChannels === 0) {
+        await audioContext.close();
+        return null;
+      }
+
+      const channelData =
+        audioBuffer.getChannelData(0);
+
+      const sampleRate =
+        audioBuffer.sampleRate;
+
+      let sumSquares = 0;
+      let peak = 0;
+      let zeroCrossings = 0;
+
+      for (
+        let i = 0;
+        i < channelData.length;
+        i++
+      ) {
+        const value = channelData[i];
+
+        sumSquares += value * value;
+
+        const absolute =
+          Math.abs(value);
+
+        if (absolute > peak) {
+          peak = absolute;
+        }
+
+        if (i > 0) {
+          const previous =
+            channelData[i - 1];
+
+          if (
+            (previous >= 0 &&
+              value < 0) ||
+            (previous < 0 &&
+              value >= 0)
+          ) {
+            zeroCrossings++;
+          }
+        }
+      }
+
+      const sampleCount =
+        Math.max(
+          channelData.length,
+          1
+        );
+
+      const rms = Math.sqrt(
+        sumSquares / sampleCount
+      );
+
+      const zeroCrossingRate =
+        zeroCrossings /
+        sampleCount;
+
+      const estimatedFrequency =
+        (zeroCrossingRate *
+          sampleRate) /
+        2;
+
+      const silenceThreshold =
+        0.01;
+
+      let silentSamples = 0;
+
+      for (
+        let i = 0;
+        i < channelData.length;
+        i++
+      ) {
+        if (
+          Math.abs(channelData[i]) <
+          silenceThreshold
+        ) {
+          silentSamples++;
+        }
+      }
+
+      const silenceRatio =
+        silentSamples / sampleCount;
+
+      const result = {
+        duration: Number(
+          audioBuffer.duration.toFixed(2)
+        ),
+
+        rms: Number(
+          rms.toFixed(5)
+        ),
+
+        peak: Number(
+          peak.toFixed(5)
+        ),
+
+        silenceRatio: Number(
+          silenceRatio.toFixed(3)
+        ),
+
+        zeroCrossingRate: Number(
+          zeroCrossingRate.toFixed(5)
+        ),
+
+        estimatedFrequency: Number(
+          estimatedFrequency.toFixed(1)
+        ),
+
+        sampleRate,
+      };
+
+      await audioContext.close();
+
+      return result;
+    } catch (error) {
+      console.warn(
+        "Audio feature extraction failed:",
+        error
+      );
+
+      return null;
+    }
+  };
+
+  /*
+   * 上传文件并调用服务器 API
+   */
+  const analyzeFile = async (
+    file: File,
+    source: "声音" | "照片"
+  ) => {
+    if (uses >= 5) {
+      setShowPro(true);
+      return;
+    }
+
+    setError("");
+    setAnalyzing(true);
+    setResult(null);
+
+    try {
+      let audioFeatures:
+        | Record<string, number>
+        | null = null;
+
+      if (source === "声音") {
+        audioFeatures =
+          await extractAudioFeatures(file);
+      }
+
+      const fd = new FormData();
+
+      fd.append(
+        "animal",
+        animal
+      );
+
+      fd.append(
+        "source",
+        source
+      );
+
+      fd.append(
+        "file",
+        file
+      );
+
+      if (audioFeatures) {
+        fd.append(
+          "audioFeatures",
+          JSON.stringify(
+            audioFeatures
+          )
+        );
+      }
+
+      const response =
+        await fetch(
+          "/api/analyze",
+          {
+            method: "POST",
+            body: fd,
+          }
+        );
+
+      const data =
+        await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          data.error ||
+            "分析失败"
+        );
+      }
+
+      const newResult: Result = {
+        ...data,
+        id: crypto.randomUUID(),
+        createdAt:
+          new Date().toLocaleTimeString(
+            "zh-CN",
+            {
+              hour: "2-digit",
+              minute: "2-digit",
+            }
+          ),
+        source,
+      };
+
+      setResult(
+        newResult
+      );
+
+      setHistory(
+        (items) =>
+          [newResult, ...items]
+            .slice(0, 12)
+      );
+
+      setUses(
+        (value) =>
+          value + 1
+      );
+    } catch (error: any) {
+      setError(
+        error?.message ||
+          "分析失败，请重试"
+      );
+    } finally {
+      setAnalyzing(false);
+    }
+  };
+
+  /*
+   * 开始录音
+   */
+  const startRecording =
+    async () => {
+      if (uses >= 5) {
+        setShowPro(true);
+        return;
+      }
+
+      try {
+        const stream =
+          await navigator.mediaDevices.getUserMedia(
+            {
+              audio: true,
+            }
+          );
+
+        const recorder =
+          new MediaRecorder(
+            stream
+          );
+
+        chunks.current = [];
+
+        recorder.ondataavailable =
+          (event) => {
+            if (
+              event.data.size > 0
+            ) {
+              chunks.current.push(
+                event.data
+              );
+            }
+          };
+
+        recorder.onstop = () => {
+          stream
+            .getTracks()
+            .forEach(
+              (track) =>
+                track.stop()
+            );
+
+          const blob =
+            new Blob(
+              chunks.current,
+              {
+                type:
+                  recorder.mimeType ||
+                  "audio/webm",
+              }
+            );
+
+          const file =
+            new File(
+              [blob],
+              "pet-recording.webm",
+              {
+                type:
+                  blob.type ||
+                  "audio/webm",
+              }
+            );
+
+          analyzeFile(
+            file,
+            "声音"
+          );
+        };
+
+        mediaRecorder.current =
+          recorder;
+
+        recorder.start();
+
+        setRecording(true);
+        setSeconds(0);
+
+        timer.current =
+          setInterval(
+            () => {
+              setSeconds(
+                (value) =>
+                  value + 1
+              );
+            },
+            1000
+          );
+      } catch {
+        setError(
+          "无法访问麦克风，请允许浏览器使用麦克风。"
+        );
+      }
+    };
+
+  /*
+   * 停止录音
+   */
+  const stopRecording =
+    () => {
+      if (
+        mediaRecorder.current
+          ?.state === "recording"
+      ) {
+        mediaRecorder.current.stop();
+      }
+
+      setRecording(false);
+
+      if (timer.current) {
+        clearInterval(
+          timer.current
+        );
+
+        timer.current = null;
+      }
+    };
+
+  /*
+   * 上传声音
+   */
+  const handleAudio = (
+    event: React.ChangeEvent<HTMLInputElement>
+  ) => {
+    const file =
+      event.target.files?.[0];
+
+    if (!file) return;
+
+    setInputName(
+      file.name
+    );
+
+    analyzeFile(
+      file,
+      "声音"
+    );
+  };
+
+  /*
+   * 上传照片
+   */
+  const handlePhoto = (
+    event: React.ChangeEvent<HTMLInputElement>
+  ) => {
+    const file =
+      event.target.files?.[0];
+
+    if (!file) return;
+
+    setInputName(
+      file.name
+    );
+
+    if (photo) {
+      URL.revokeObjectURL(
+        photo
+      );
+    }
+
+    setPhoto(
+      URL.createObjectURL(
+        file
+      )
+    );
+
+    analyzeFile(
+      file,
+      "照片"
+    );
+  };
+
+  const reset = () => {
+    setResult(null);
+    setInputName("");
+    setPhoto(null);
+    setError("");
+  };
+
+  const share = async () => {
+    if (!result) return;
+
+    const text =
+      `PawTalk AI：${result.animal}｜${result.mood}｜置信度 ${result.confidence}%`;
+
+    try {
+      if (
+        navigator.share
+      ) {
+        await navigator.share({
+          title:
+            "PawTalk AI V3",
+          text,
+        });
+      } else {
+        await navigator.clipboard.writeText(
+          text
+        );
+      }
+    } catch {}
+  };
+
+  const clearHistory =
+    () => {
+      setHistory([]);
+
+      localStorage.removeItem(
+        "pawtalk-history-v3"
+      );
+    };
+
+  return (
+    <main>
+      <nav className="nav">
+        <div className="brand">
+          <div className="brandMark">
+            <AudioLines size={20} />
+          </div>
+
+          <span>
+            PawTalk <b>AI</b>
+          </span>
+
+          <em>V3</em>
+        </div>
+
+        <div className="navRight">
+          <span className="statusDot" />
+
+          真实 AI 多模态分析
+
+          <button
+            className="proBtn"
+            onClick={() =>
+              setShowPro(true)
+            }
+          >
+            <Crown size={13} />
+            PRO
+          </button>
+        </div>
+      </nav>
+
+      <section className="hero">
+        <div className="pill">
+          <Sparkles size={14} />
+          V3 · REAL AI MULTIMODAL
+        </div>
+
+        <h1>
+          不是“翻译”，是
+          <span>理解线索。</span>
+        </h1>
+
+        <p>
+          上传宠物声音或照片，让 AI
+          从可观察的声音、姿态、表情和环境线索，
+          推测它当前可能的情绪与互动需求。
+        </p>
+
+        <div className="heroStats">
+          <span>
+            <Zap size={14} />
+            真实 AI
+          </span>
+
+          <span>
+            <Camera size={14} />
+            图像理解
+          </span>
+
+          <span>
+            <Activity size={14} />
+            行为指标
+          </span>
+
+          <span>
+            <LockKeyhole size={14} />
+            密钥不进前端
+          </span>
+        </div>
+      </section>
+
+      <section className="workspace">
+        <div className="card">
+          <div className="cardHead">
+            <div>
+              <h2>
+                ① 选择宠物
+              </h2>
+
+              <p>
+                免费剩余{" "}
+                {Math.max(
+                  0,
+                  5 - uses
+                )}{" "}
+                / 5 次
+              </p>
+            </div>
+
+            <ShieldCheck size={19} />
+          </div>
+
+          <div className="animals">
+            {animals.map(
+              (item) => (
+                <button
+                  key={
+                    item.name
+                  }
+                  className={`animal ${
+                    animal ===
+                    item.name
+                      ? "active"
+                      : ""
+                  }`}
+                  onClick={() =>
+                    setAnimal(
+                      item.name
+                    )
+                  }
+                >
+                  {item.icon}
+
+                  <span>
+                    {item.name}
+                  </span>
+
+                  {animal ===
+                    item.name && (
+                    <ChevronRight
+                      size={16}
+                    />
+                  )}
+                </button>
+              )
+            )}
+          </div>
+
+          <div className="tabs">
+            <button
+              className={
+                tab === "sound"
+                  ? "active"
+                  : ""
+              }
+              onClick={() =>
+                setTab("sound")
+              }
+            >
+              <Volume2 size={16} />
+              声音分析
+            </button>
+
+            <button
+              className={
+                tab === "photo"
+                  ? "active"
+                  : ""
+              }
+              onClick={() =>
+                setTab("photo")
+              }
+            >
+              <Camera size={16} />
+              照片分析
+            </button>
+          </div>
+
+          {tab === "sound" ? (
+            <>
+              <div
+                className={`recorder ${
+                  recording
+                    ? "recording"
+                    : ""
+                } ${
+                  analyzing
+                    ? "analyzing"
+                    : ""
+                }`}
+              >
+                <div className="orb">
+                  {analyzing ? (
+                    <Sparkles
+                      size={34}
+                    />
+                  ) : recording ? (
+                    <Square
+                      size={28}
+                      fill="currentColor"
+                    />
+                  ) : (
+                    <Mic size={34} />
+                  )}
+                </div>
+
+                {recording ? (
+                  <>
+                    <strong>
+                      正在聆听 ·{" "}
+                      {String(
+                        Math.floor(
+                          seconds /
+                            60
+                        )
+                      ).padStart(
+                        2,
+                        "0"
+                      )}
+                      :
+                      {String(
+                        seconds % 60
+                      ).padStart(
+                        2,
+                        "0"
+                      )}
+                    </strong>
+
+                    <div className="waves">
+                      {Array.from(
+                        {
+                          length: 18,
+                        }
+                      ).map(
+                        (_, i) => (
+                          <i
+                            key={i}
+                            style={{
+                              animationDelay:
+                                `${
+                                  i *
+                                  0.07
+                                }s`,
+                            }}
+                          />
+                        )
+                      )}
+                    </div>
+
+                    <button
+                      className="primary stop"
+                      onClick={
+                        stopRecording
+                      }
+                    >
+                      结束录音
+                    </button>
+                  </>
+                ) : analyzing ? (
+                  <>
+                    <strong>
+                      AI 正在分析…
+                    </strong>
+
+                    <p>
+                      提取声音特征并生成行为推测
+                    </p>
+
+                    <div className="loader">
+                      <span />
+                      <span />
+                      <span />
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <strong>
+                      录一段它的声音
+                    </strong>
+
+                    <p>
+                      建议 3–15 秒，环境尽量安静
+                    </p>
+
+                    <button
+                      className="primary"
+                      onClick={
+                        startRecording
+                      }
+                    >
+                      <Mic size={18} />
+                      开始录音
+                    </button>
+                  </>
+                )}
+              </div>
+
+              {!recording &&
+                !analyzing && (
+                  <label className="upload">
+                    <Upload size={17} />
+
+                    <span>
+                      {inputName ||
+                        "上传已有宠物录音"}
+                    </span>
+
+                    <input
+                      type="file"
+                      accept="audio/*"
+                      onChange={
+                        handleAudio
+                      }
+                    />
+                  </label>
+                )}
+            </>
+          ) : (
+            <>
+              <div className="photoBox">
+                {photo ? (
+                  <img
+                    src={photo}
+                    alt="宠物预览"
+                  />
+                ) : (
+                  <div className="photoEmpty">
+                    <ImageIcon
+                      size={38}
+                    />
+
+                    <strong>
+                      上传一张宠物照片
+                    </strong>
+
+                    <p>
+                      AI
+                      观察姿态、表情和环境线索
+                    </p>
+                  </div>
+                )}
+
+                {analyzing && (
+                  <div className="scan">
+                    <Sparkles
+                      size={20}
+                    />
+                    AI 正在观察
+                  </div>
+                )}
+              </div>
+
+              {!analyzing && (
+                <label className="upload">
+                  <Camera size={17} />
+
+                  <span>
+                    {inputName ||
+                      "选择照片"}
+                  </span>
+
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={
+                      handlePhoto
+                    }
+                  />
+                </label>
+              )}
+            </>
+          )}
+
+          {error && (
+            <div className="error">
+              {error}
+            </div>
+          )}
+
+          <p className="disclaimer">
+            <ShieldCheck size={14} />
+            行为推测不是医学诊断，也不能证明动物“真的说了这句话”。
+          </p>
+        </div>
+
+        <div className="card resultCard">
+          {!result ? (
+            <div className="empty">
+              <div className="emptyIcon">
+                <AudioLines size={31} />
+              </div>
+
+              <h2>
+                {error
+                  ? "分析没有完成"
+                  : "等待 AI 分析"}
+              </h2>
+
+              <p>
+                {error
+                  ? "检查 API 配置或稍后重试。"
+                  : "上传声音或照片，V3 会调用服务器端 AI 生成报告。"}
+              </p>
+
+              <div className="miniFeatures">
+                <span>
+                  情绪概率
+                </span>
+
+                <span>
+                  行为推测
+                </span>
+
+                <span>
+                  下一步建议
+                </span>
+              </div>
+            </div>
+          ) : (
+            <>
+              <div className="resultTop">
+                <div>
+                  <span className="eyebrow">
+                    V3 · AI ANALYSIS COMPLETE
+                  </span>
+
+                  <h2>
+                    {result.animal} · 分析完成
+                  </h2>
+
+                  <small className="source">
+                    来自{" "}
+                    {result.source}{" "}
+                    ·{" "}
+                    {result.createdAt}
+                  </small>
+                </div>
+
+                <div className="confidence">
+                  {result.confidence}%
+
+                  <small>
+                    置信度
+                  </small>
+                </div>
+              </div>
+
+              <div className="quote">
+                {result.phrase}
+              </div>
+
+              <div className="mood">
+                <span>
+                  当前状态
+                </span>
+
+                <strong>
+                  {result.mood}
+                </strong>
+              </div>
+
+              <Metric
+                label="互动需求"
+                value={
+                  result.attention
+                }
+              />
+
+              <Metric
+                label="紧张程度"
+                value={
+                  result.tension
+                }
+              />
+
+              <Metric
+                label="兴奋程度"
+                value={
+                  result.excitement
+                }
+              />
+
+              <div className="detail">
+                <Sparkles size={17} />
+
+                <div>
+                  <b>
+                    AI 观察
+                  </b>
+
+                  <p>
+                    {result.detail}
+                  </p>
+                </div>
+              </div>
+
+              <div className="nextTip">
+                <b>
+                  下一步建议
+                </b>
+
+                <span>
+                  {result.nextTip}
+                </span>
+              </div>
+
+              <div className="actions">
+                <button
+                  onClick={reset}
+                >
+                  <RotateCcw size={16} />
+                  再分析
+                </button>
+
+                <button
+                  onClick={share}
+                >
+                  <Share2 size={16} />
+                  分享结果
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      </section>
+
+      <section className="history">
+        <div className="sectionTitle">
+          <h2>
+            <History size={19} />
+            最近分析
+          </h2>
+
+          {history.length >
+            0 && (
+            <button
+              onClick={
+                clearHistory
+              }
+            >
+              <Trash2
+                size={14}
+              />
+              清空
+            </button>
+          )}
+        </div>
+
+        {history.length ===
+        0 ? (
+          <div className="historyEmpty">
+            完成第一次分析后会自动保存在本机。
+          </div>
+        ) : (
+          <div className="historyGrid">
+            {history.map(
+              (item) => (
+                <button
+                  key={item.id}
+                  className="historyItem"
+                  onClick={() =>
+                    setResult(
+                      item
+                    )
+                  }
+                >
+                  <span>
+                    {item.animal} ·{" "}
+                    {item.source}
+                  </span>
+
+                  <b>
+                    {item.mood}
+                  </b>
+
+                  <small>
+                    {item.confidence}%
+                    置信度 ·{" "}
+                    {item.createdAt}
+                  </small>
+                </button>
+              )
+            )}
+          </div>
+        )}
+      </section>
+
+      <footer>
+        © 2026 PawTalk AI V3 ·
+        真实 AI 分析需要配置服务器端 API Key。
+      </footer>
+
+      {showPro && (
+        <div
+          className="modal"
+          onClick={() =>
+            setShowPro(false)
+          }
+        >
+          <div
+            className="modalCard"
+            onClick={(event) =>
+              event.stopPropagation()
+            }
+          >
+            <Crown size={30} />
+
+            <h2>
+              PawTalk PRO
+            </h2>
+
+            <p>
+              V3
+              已预留会员体系：无限分析、历史云同步、高级报告与更多宠物模型。
+            </p>
+
+            <div className="price">
+              $4.99{" "}
+              <small>
+                / 月
+              </small>
+            </div>
+
+            <button
+              className="primary"
+              onClick={() =>
+                setShowPro(false)
+              }
+            >
+              先继续体验
+            </button>
+          </div>
+        </div>
+      )}
+    </main>
+  );
 }
-function Metric({label,value}:{label:string,value:number}){return <div className="metric"><div><span>{label}</span><b>{value}%</b></div><div className="bar"><i style={{width:`${value}%`}}/></div></div>}
+
+function Metric({
+  label,
+  value,
+}: {
+  label: string;
+  value: number;
+}) {
+  return (
+    <div className="metric">
+      <div>
+        <span>
+          {label}
+        </span>
+
+        <b>
+          {value}%
+        </b>
+      </div>
+
+      <div className="bar">
+        <i
+          style={{
+            width: `${value}%`,
+          }}
+        />
+      </div>
+    </div>
+  );
+}
