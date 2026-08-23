@@ -1117,14 +1117,17 @@ useEffect(() => {
       } catch {}
     };
 
-  const logout =
-    async () => {
-      await supabase.auth.signOut();
+  const logout = async () => {
+  const { error } = await supabase.auth.signOut();
 
-      setSession(null);
-      setResult(null);
-      setHistory([]);
-    };
+  if (error) {
+    console.error("Sign out failed:", error);
+    return;
+  }
+
+  setSession(null);
+  setShowAccount(false);
+};
 
   /*
    * ============================
@@ -1322,9 +1325,9 @@ useEffect(() => {
               setShowAccount(false);
             }}
           >
-            <LogOut size={16} />
-            退出登录
-          </button>
+            <button onClick={logout}>
+  退出登录
+</button>
         </div>
       )}
     </div>
