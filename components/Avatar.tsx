@@ -1,7 +1,10 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { Camera, Loader2, User } from "lucide-react";
+import {
+  Camera,
+  Loader2,
+} from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 
 type AvatarProps = {
@@ -52,24 +55,20 @@ export default function Avatar({
       setUploading(true);
 
       const extension =
-        file.name.split(".").pop() ||
-        "jpg";
+        file.name.split(".").pop() || "jpg";
 
       const filePath =
         `${userId}/avatar-${Date.now()}.${extension}`;
 
-      const { error: uploadError } =
-        await supabase.storage
-          .from("avatars")
-          .upload(
-            filePath,
-            file,
-            {
-              cacheControl: "3600",
-              upsert: true,
-              contentType: file.type,
-            }
-          );
+      const {
+        error: uploadError,
+      } = await supabase.storage
+        .from("avatars")
+        .upload(filePath, file, {
+          cacheControl: "3600",
+          upsert: true,
+          contentType: file.type,
+        });
 
       if (uploadError) {
         throw uploadError;
@@ -77,30 +76,34 @@ export default function Avatar({
 
       const {
         data: publicData,
-      } =
-        supabase.storage
-          .from("avatars")
-          .getPublicUrl(filePath);
+      } = supabase.storage
+        .from("avatars")
+        .getPublicUrl(filePath);
 
       const publicUrl =
         publicData.publicUrl;
 
       const {
         error: updateError,
-      } =
-        await supabase.auth.updateUser({
-          data: {
-            avatar_url: publicUrl,
-          },
-        });
+      } = await supabase.auth.updateUser({
+        data: {
+          avatar_url: publicUrl,
+        },
+      });
 
       if (updateError) {
         throw updateError;
       }
 
+      await supabase.auth.getSession();
+
       onUploaded?.(publicUrl);
+
     } catch (err: any) {
-      console.error(err);
+      console.error(
+        "Avatar upload error:",
+        err
+      );
 
       setError(
         err?.message ||
@@ -116,8 +119,7 @@ export default function Avatar({
   };
 
   const letter =
-    email?.charAt(0)?.toUpperCase() ||
-    "U";
+    email?.charAt(0)?.toUpperCase() || "U";
 
   return (
     <div className="avatarUpload">
