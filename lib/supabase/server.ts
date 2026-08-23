@@ -16,11 +16,7 @@ export async function createClient() {
         setAll(cookiesToSet) {
           try {
             cookiesToSet.forEach(
-              ({
-                name,
-                value,
-                options,
-              }) => {
+              ({ name, value, options }) => {
                 cookieStore.set(
                   name,
                   value,
@@ -29,7 +25,7 @@ export async function createClient() {
               }
             );
           } catch {
-            // 某些 Server Component 场景不能直接写 cookie
+            // Server Component 中可能无法直接写 cookie
           }
         },
       },
