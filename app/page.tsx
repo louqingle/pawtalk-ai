@@ -79,7 +79,8 @@ export default function Home() {
 
   const [authLoading, setAuthLoading] =
     useState(true);
-
+  const [showAccount, setShowAccount] =
+  useState(false);
   const [animal, setAnimal] =
     useState<Animal>("猫咪");
 
@@ -1178,63 +1179,114 @@ export default function Home() {
    */
   return (
     <main>
-      <nav className="nav">
-        <div className="brand">
-          <div className="brandMark">
-            <AudioLines size={20} />
+     <div className="navRight">
+  <span className="statusDot" />
+
+  真实 AI 多模态分析
+
+  <button
+    className="proBtn"
+    onClick={() => setShowPro(true)}
+  >
+    <Crown size={13} />
+    PRO
+  </button>
+
+  {session && (
+    <div className="account">
+      <button
+        className="accountButton"
+        onClick={() =>
+          setShowAccount((value) => !value)
+        }
+        title={
+          session.user.email ||
+          "我的账户"
+        }
+      >
+        <div className="avatar">
+          {session.user.user_metadata
+            ?.avatar_url ? (
+            <img
+              src={
+                session.user
+                  .user_metadata
+                  .avatar_url
+              }
+              alt="头像"
+            />
+          ) : (
+            <User size={18} />
+          )}
+        </div>
+
+        <span className="accountName">
+          {session.user.user_metadata
+            ?.full_name ||
+            session.user.email?.split("@")[0] ||
+            "我的账户"}
+        </span>
+
+        <ChevronRight
+          size={15}
+          className={
+            showAccount
+              ? "rotate"
+              : ""
+          }
+        />
+      </button>
+
+      {showAccount && (
+        <div className="accountMenu">
+          <div className="accountInfo">
+            <div className="avatar large">
+              {session.user.user_metadata
+                ?.avatar_url ? (
+                <img
+                  src={
+                    session.user
+                      .user_metadata
+                      .avatar_url
+                  }
+                  alt="头像"
+                />
+              ) : (
+                <User size={22} />
+              )}
+            </div>
+
+            <div>
+              <strong>
+                {session.user
+                  .user_metadata
+                  ?.full_name ||
+                  "PawTalk 用户"}
+              </strong>
+
+              <small>
+                {session.user.email}
+              </small>
+            </div>
           </div>
 
-          <span>
-            PawTalk{" "}
-            <b>AI</b>
-          </span>
-
-          <em>V3</em>
-        </div>
-
-        <div className="navRight">
-          <span className="statusDot" />
-
-          真实 AI 多模态分析
-
-          <span className="userEmail">
-            <User size={13} />
-
-            {session.user?.email}
-          </span>
-
-          <span className="credits">
-            免费剩余{" "}
-            {Math.max(
-              0,
-              5 - uses
-            )}{" "}
-            / 5
-          </span>
+          <div className="accountDivider" />
 
           <button
-            className="proBtn"
-            onClick={() =>
-              setShowPro(true)
-            }
+            className="logoutButton"
+            onClick={async () => {
+              await supabase.auth.signOut();
+              setShowAccount(false);
+            }}
           >
-            <Crown size={13} />
-            PRO
-          </button>
-
-          <button
-            className="logoutBtn"
-            onClick={
-              logout
-            }
-            title="退出登录"
-          >
-            <LogOut
-              size={15}
-            />
+            <LogOut size={16} />
+            退出登录
           </button>
         </div>
-      </nav>
+      )}
+    </div>
+  )}
+</div>  
 
       <section className="hero">
         <div className="pill">
