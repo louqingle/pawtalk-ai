@@ -1299,96 +1299,149 @@ export default function Home() {
    * 主界面
    * ============================
    */
-
-  return (
-    <main>
+return (
+  <main>
     <div
-     <div className="navRight">
-    style={{
-    color: "#fff",
-    fontSize: "14px",
-    padding: "8px 12px",
-    background: "#222",
-    borderRadius: "10px",
-  }}
->
-  👤 {session.user.email}
-</div>  
-    style={{
-      display: "flex",
-      alignItems: "center",
-      gap: "10px",
-      position: "relative",
-    }}
-  >
-    <Avatar
-      userId={session.user.id}
-      email={session.user.email}
-      avatarUrl={avatarUrl}
-      onUploaded={(url) => {
-        setAvatarUrl(url);
-      }}
-    />
-
-    <button
-      type="button"
-      onClick={() =>
-        setShowAccount((v) => !v)
-      }
+      className="navRight"
       style={{
-        background: "none",
-        border: "none",
-        color: "white",
-        cursor: "pointer",
-        fontSize: "14px",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "flex-end",
+        gap: "10px",
+        position: "relative",
+        padding: "16px 24px",
       }}
     >
-      {session.user.email}
-    </button>
+      <span className="statusDot" />
 
-    {showAccount && (
-      <div
+      <span
         style={{
-          position: "absolute",
-          right: 0,
-          top: "48px",
-          width: "240px",
-          padding: "16px",
-          background: "#111",
-          border: "1px solid rgba(255,255,255,.12)",
-          borderRadius: "16px",
-          zIndex: 9999,
+          color: "#fff",
+          fontSize: "14px",
+          opacity: 0.8,
         }}
       >
+        真实 AI 多模态分析
+      </span>
+
+      <Avatar
+        userId={session.user.id}
+        email={session.user.email}
+        avatarUrl={avatarUrl}
+        onUploaded={(url) => {
+          setAvatarUrl(url);
+        }}
+      />
+
+      <button
+        type="button"
+        onClick={() =>
+          setShowAccount((v) => !v)
+        }
+        style={{
+          background: "none",
+          border: "none",
+          color: "white",
+          cursor: "pointer",
+          fontSize: "14px",
+          maxWidth: "220px",
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
+        }}
+      >
+        {session.user.email}
+      </button>
+
+      {showAccount && (
         <div
           style={{
-            marginBottom: "14px",
-            wordBreak: "break-all",
+            position: "absolute",
+            right: "24px",
+            top: "64px",
+            width: "260px",
+            padding: "18px",
+            background: "#111",
+            border: "1px solid rgba(255,255,255,.12)",
+            borderRadius: "16px",
+            zIndex: 9999,
+            boxShadow:
+              "0 20px 60px rgba(0,0,0,.45)",
           }}
         >
-          {session.user.email}
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "12px",
+              marginBottom: "16px",
+            }}
+          >
+            <Avatar
+              userId={session.user.id}
+              email={session.user.email}
+              avatarUrl={avatarUrl}
+              onUploaded={(url) => {
+                setAvatarUrl(url);
+              }}
+            />
+
+            <div
+              style={{
+                minWidth: 0,
+              }}
+            >
+              <div
+                style={{
+                  color: "#fff",
+                  fontWeight: 600,
+                  marginBottom: "4px",
+                }}
+              >
+                我的账户
+              </div>
+
+              <div
+                style={{
+                  color: "rgba(255,255,255,.6)",
+                  fontSize: "12px",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {session.user.email}
+              </div>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={logout}
+            style={{
+              width: "100%",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: "8px",
+              padding: "11px",
+              borderRadius: "10px",
+              border: "1px solid rgba(255,255,255,.1)",
+              background: "#fff",
+              color: "#111",
+              cursor: "pointer",
+              fontWeight: 600,
+            }}
+          >
+            <LogOut size={15} />
+            退出登录
+          </button>
         </div>
+      )}
+    </div>
 
-        <button
-          type="button"
-          onClick={logout}
-          style={{
-            width: "100%",
-            padding: "10px",
-            borderRadius: "10px",
-            border: "none",
-            cursor: "pointer",
-          }}
-        >
-          <LogOut size={15} />
-          {" "}退出登录
-        </button>
-      </div>
-    )}
-  </div>
-</div>
-
-      <section className="hero">
+    <section className="hero">
+ 
         <div className="pill">
           <Sparkles size={14} />
           V3 · REAL AI MULTIMODAL
