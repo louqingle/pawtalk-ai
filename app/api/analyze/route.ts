@@ -27,11 +27,7 @@ export async function GET() {
           setAll(cookiesToSet) {
             try {
               cookiesToSet.forEach(
-                ({
-                  name,
-                  value,
-                  options,
-                }) => {
+                ({ name, value, options }) => {
                   cookieStore.set(
                     name,
                     value,
@@ -45,7 +41,6 @@ export async function GET() {
       }
     );
 
-    // 检查登录用户
     const {
       data: { user },
       error: userError,
@@ -60,19 +55,13 @@ export async function GET() {
       );
     }
 
-    // 获取用户额度
     const {
       data: profile,
       error: profileError,
     } = await supabase
       .from("profiles")
-      .select(
-        "free_uses, is_pro"
-      )
-      .eq(
-        "id",
-        user.id
-      )
+      .select("free_credits, is_pro")
+      .eq("id", user.id)
       .maybeSingle();
 
     if (profileError) {
@@ -83,41 +72,37 @@ export async function GET() {
 
       return json(
         {
-          error:
-            "读取用户额度失败",
+          error: "读取用户额度失败",
         },
         500
       );
     }
 
-    // 如果用户没有 profile
     if (!profile) {
       return json({
-        used: 0,
-        remaining: 5,
+        used: 5,
+        remaining: 0,
         isPro: false,
       });
     }
 
-    const used = Math.max(
+    const freeCredits = Math.max(
       0,
-      Number(
-        profile.free_uses ?? 0
-      )
+      Number(profile.free_credits ?? 0)
     );
 
-    const isPro =
-      Boolean(
-        profile.is_pro
-      );
+    const isPro = Boolean(profile.is_pro);
 
-    const remaining =
-      isPro
-        ? 999999
-        : Math.max(
-            0,
-            5 - used
-          );
+    const remaining = isPro
+      ? 999999
+      : freeCredits;
+
+    const used = isPro
+      ? 0
+      : Math.max(
+          0,
+          5 - freeCredits
+        );
 
     return json({
       used,
