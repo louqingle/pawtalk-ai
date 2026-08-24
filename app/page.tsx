@@ -1302,19 +1302,18 @@ export default function Home() {
 
   return (
     <main>
-      <div className="navRight">
-  <span className="statusDot" />
-  <span>真实 AI 多模态分析</span>
-
-  <button
-    className="proBtn"
-    onClick={() => setShowPro(true)}
-  >
-    <Crown size={13} />
-    PRO
-  </button>
-
-  <div
+    <div
+     <div className="navRight">
+    style={{
+    color: "#fff",
+    fontSize: "14px",
+    padding: "8px 12px",
+    background: "#222",
+    borderRadius: "10px",
+  }}
+>
+  👤 {session.user.email}
+</div>  
     style={{
       display: "flex",
       alignItems: "center",
